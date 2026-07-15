@@ -1,0 +1,22 @@
+{
+  "name": "hira-ops",
+  "description": "운영 팀. GitHub 관리, 서버 재시작, .env 관리, 로그 모니터링, 바로가기 앱 관리.",
+  "members": [
+    {
+      "name": "devops",
+      "agentId": "devops@hira-ops",
+      "agentType": "developer",
+      "cwd": "/Users/youn/hira-app",
+      "description": "git commit/push, 서버 재시작, .env 업데이트, /tmp/hira_server.log 모니터링",
+      "skills": []
+    },
+    {
+      "name": "pm",
+      "agentId": "pm@hira-ops",
+      "agentType": "manager",
+      "cwd": "/Users/youn/hira-app",
+      "description": "작업 우선순위, 히스토리 문서(history/) 관리, 릴리즈 노트 작성",
+      "skills": ["document-skills:docx"]
+    }
+  ]
+}

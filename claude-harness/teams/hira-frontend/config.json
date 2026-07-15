@@ -1,0 +1,22 @@
+{
+  "name": "hira-frontend",
+  "description": "HIRA 앱 프론트엔드 팀. index.html UI/UX, 검색 필터, 결과 테이블, 챗봇 UI, 반응형 레이아웃 담당.",
+  "members": [
+    {
+      "name": "fe-developer",
+      "agentId": "fe-developer@hira-frontend",
+      "agentType": "developer",
+      "cwd": "/Users/youn/hira-app/templates",
+      "description": "HTML/CSS/JS 개발, 뷰포트 100vh 레이아웃, 결과 테이블 스크롤, EDI 코드 필터",
+      "skills": ["document-skills:frontend-design"]
+    },
+    {
+      "name": "ux-reviewer",
+      "agentId": "ux-reviewer@hira-frontend",
+      "agentType": "reviewer",
+      "cwd": "/Users/youn/hira-app/templates",
+      "description": "의료인 워크플로우 UX 검토, 접근성, 한 화면 결과 표시 검증",
+      "skills": ["superpowers:requesting-code-review"]
+    }
+  ]
+}

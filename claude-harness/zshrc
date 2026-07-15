@@ -1,0 +1,8 @@
+# PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Claude Code
+alias cc='claude --dangerously-skip-permissions'
+
+# HIRA 앱
+alias hira='cd /Users/youn/hira-app && tail -f /tmp/hira_server.log'

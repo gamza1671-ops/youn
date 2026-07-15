@@ -1,0 +1,30 @@
+{
+  "name": "hira-dev",
+  "description": "HIRA 앱 백엔드 개발 팀. Flask 라우트, 검색 로직, 챗봇 연동, 인증을 담당한다.",
+  "members": [
+    {
+      "name": "architect",
+      "agentId": "architect@hira-dev",
+      "agentType": "architect",
+      "cwd": "/Users/youn/hira-app",
+      "description": "Flask 구조 설계, 캐시 전략, 성능 최적화, 코드 구조 결정",
+      "skills": ["superpowers:writing-plans"]
+    },
+    {
+      "name": "be-developer",
+      "agentId": "be-developer@hira-dev",
+      "agentType": "developer",
+      "cwd": "/Users/youn/hira-app",
+      "description": "app.py 라우트 개발, HIRA XML 파싱, Ollama 챗봇 스트리밍, 세션 인증",
+      "skills": ["superpowers:test-driven-development"]
+    },
+    {
+      "name": "tester",
+      "agentId": "tester@hira-dev",
+      "agentType": "tester",
+      "cwd": "/Users/youn/hira-app",
+      "description": "API 엔드포인트 curl 테스트, 오류 재현, 로그 분석",
+      "skills": ["superpowers:systematic-debugging"]
+    }
+  ]
+}

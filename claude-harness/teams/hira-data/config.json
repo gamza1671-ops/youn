@@ -1,0 +1,22 @@
+{
+  "name": "hira-data",
+  "description": "데이터 팀. HIRA API XML 파싱, 캐시(cache.pkl) 관리, 검색 필터 로직, 데이터 정합성 담당.",
+  "members": [
+    {
+      "name": "data-engineer",
+      "agentId": "data-engineer@hira-data",
+      "agentType": "developer",
+      "cwd": "/Users/youn/hira-app",
+      "description": "HIRA XML 파싱(parse_xml_items), 캐시 빌드(build_cache), 검색 필터(search_cache)",
+      "skills": ["document-skills:xlsx"]
+    },
+    {
+      "name": "analyst",
+      "agentId": "analyst@hira-data",
+      "agentType": "researcher",
+      "cwd": "/Users/youn/hira-app",
+      "description": "검색 결과 분석, API 오류 패턴, 데이터 품질 검증, npayCd 코드 체계 조사",
+      "skills": ["document-skills:pdf"]
+    }
+  ]
+}

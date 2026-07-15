@@ -1,0 +1,22 @@
+{
+  "name": "qa-team",
+  "description": "품질 관리 팀. 코드 리뷰, 보안 점검(XSS/인증), 검색 정확도, 챗봇 응답 품질 검증.",
+  "members": [
+    {
+      "name": "code-reviewer",
+      "agentId": "code-reviewer@qa-team",
+      "agentType": "reviewer",
+      "cwd": "/Users/youn/hira-app",
+      "description": "Flask 코드 리뷰, XSS·인증 보안 점검, dead code 제거",
+      "skills": ["superpowers:requesting-code-review","superpowers:receiving-code-review"]
+    },
+    {
+      "name": "test-engineer",
+      "agentId": "test-engineer@qa-team",
+      "agentType": "tester",
+      "cwd": "/Users/youn/hira-app",
+      "description": "검색 정확도 테스트, 챗봇 오류 시나리오, 브라우저 UI 검증",
+      "skills": ["document-skills:webapp-testing","superpowers:systematic-debugging"]
+    }
+  ]
+}
