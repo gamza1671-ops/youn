@@ -1,0 +1,31 @@
+# 캐시 / 데이터
+cache.pkl
+*.pkl
+
+# 환경변수 (API 키 포함)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 로그
+*.log
+nohup.out
+
+# 에디터
+.vscode/
+.idea/
+*.swp
+*.swo

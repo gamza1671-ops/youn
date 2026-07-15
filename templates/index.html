@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전국 병원 비급여진료비 조회</title>
+<style>
+/* ── Reset & Base ───────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#2563eb;--blue-d:#1d4ed8;--blue-l:#dbeafe;--blue-ll:#eff6ff;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;
+  --gray-400:#94a3b8;--gray-500:#64748b;--gray-600:#475569;--gray-800:#1e293b;
+  --green:#059669;--red:#dc2626;--amber:#d97706;--purple:#7c3aed;
+  --radius:12px;--shadow:0 2px 16px rgba(0,0,0,.09);
+}
+html,body{height:100%}
+body{font-family:'Apple SD Gothic Neo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#f0f4f8;color:var(--gray-800);font-size:14px;
+     display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Layout ─────────────────────────────────────── */
+header{background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 55%,#3b82f6 100%);
+       color:#fff;padding:10px 20px;flex-shrink:0}
+.hdr{max-width:1400px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.hdr-icon{font-size:28px;line-height:1}
+.hdr h1{font-size:17px;font-weight:700;margin-bottom:2px}
+.hdr p{font-size:11px;opacity:.85}
+
+.layout{max-width:1400px;margin:0 auto;padding:10px 20px;
+        display:grid;grid-template-columns:1fr 340px;gap:16px;
+        flex:1;min-height:0;overflow:hidden;align-items:stretch;width:100%}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+
+.main-col{min-width:0;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+footer{display:none}
+
+/* ── Notice ─────────────────────────────────────── */
+.notice{border:1.5px solid #fbbf24;border-radius:var(--radius);overflow:hidden;margin-bottom:8px;flex-shrink:0}
+.notice-bar{display:flex;align-items:center;gap:8px;padding:11px 14px;background:#fffbeb;font-size:12px;flex-wrap:wrap}
+.notice-bar span{flex:1;color:#92400e}
+.notice-toggle{padding:5px 12px;border:1.5px solid #f59e0b;border-radius:8px;background:#fff;
+               color:#92400e;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+.notice-body{padding:16px;background:#fff;font-size:12px;line-height:1.9;
+             border-top:1px solid #fde68a;display:none}
+.notice-body.open{display:block}
+.notice-body ol{padding-left:18px;color:var(--gray-600)}
+.notice-body a{color:var(--blue);text-decoration:none}
+.notice-body code{background:var(--gray-100);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px}
+.notice-body pre{background:var(--gray-800);color:#86efac;padding:10px 14px;border-radius:8px;font-size:11px;margin:8px 0;overflow-x:auto}
+
+/* ── 항목 구분 탭 ───────────────────────────────── */
+.gbn-tabs{display:flex;gap:0;margin-bottom:8px;background:#fff;
+          border-radius:12px;padding:4px;box-shadow:var(--shadow);overflow-x:auto;flex-shrink:0}
+.gbn-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+         padding:6px 8px;border-radius:9px;cursor:pointer;border:none;background:transparent;
+         transition:all .2s;white-space:nowrap;min-width:60px}
+.gbn-tab:hover{background:var(--gray-100)}
+.gbn-tab.active{background:var(--blue);color:#fff !important}
+.gbn-tab.active .gbn-icon{filter:none}
+.gbn-tab .gbn-icon{font-size:17px;line-height:1}
+.gbn-tab .gbn-label{font-size:11px;font-weight:700;color:var(--gray-600)}
+.gbn-tab.active .gbn-label{color:#fff}
+.gbn-tab .gbn-cnt{font-size:10px;color:var(--gray-400);font-weight:500}
+.gbn-tab.active .gbn-cnt{color:rgba(255,255,255,.75)}
+
+/* ── Search Card ─────────────────────────────────── */
+.search-card{background:#fff;border-radius:14px;padding:12px 16px;box-shadow:var(--shadow);margin-bottom:8px;flex-shrink:0}
+
+.search-hero label{display:block;font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:4px}
+.search-input-wrap{position:relative;display:flex;gap:8px;margin-bottom:8px}
+#itemNm{flex:1;padding:8px 12px;border:2px solid var(--gray-200);border-radius:10px;
+        font-size:14px;color:var(--gray-800);outline:none;transition:border-color .2s;background:var(--gray-50)}
+#itemNm:focus{border-color:var(--blue);background:#fff}
+.search-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+.search-tag{padding:3px 8px;border-radius:20px;background:var(--blue-ll);color:var(--blue);
+            font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--blue-l);transition:all .15s}
+.search-tag:hover{background:var(--blue-l)}
+
+/* 자동완성 */
+#ac-list{position:absolute;top:100%;left:0;right:112px;background:#fff;
+         border:1.5px solid var(--gray-200);border-top:none;border-radius:0 0 10px 10px;
+         max-height:240px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.1);display:none}
+#ac-list li{padding:9px 14px;cursor:pointer;font-size:12px;color:var(--gray-600);
+            display:flex;align-items:center;gap:6px}
+#ac-list li:hover,#ac-list li.active{background:var(--blue-ll);color:var(--blue)}
+#ac-list li mark{background:none;color:var(--blue);font-weight:700}
+#ac-list li .ac-icon{font-size:10px;opacity:.6}
+
+.filter-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media(max-width:640px){.filter-row{grid-template-columns:1fr 1fr}}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--gray-500);margin-bottom:2px}
+.field select,.field input{width:100%;padding:6px 10px;border:1.5px solid var(--gray-200);
+  border-radius:8px;font-size:12px;color:var(--gray-800);background:var(--gray-50);outline:none;transition:border-color .2s}
+.field select:focus,.field input:focus{border-color:var(--blue);background:#fff}
+.btn-row{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.btn{padding:7px 18px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;border:none}
+.btn-reset{background:#fff;border:1.5px solid var(--gray-200);color:var(--gray-600)}
+.btn-reset:hover{background:var(--gray-100)}
+.btn-search{background:var(--blue);color:#fff;min-width:100px}
+.btn-search:hover:not(:disabled){background:var(--blue-d)}
+.btn-search:disabled{opacity:.5;cursor:not-allowed}
+
+/* 태그 카테고리 */
+.tag-group{margin-bottom:2px}
+.tag-group-label{font-size:10px;font-weight:700;color:var(--gray-400);margin-bottom:2px;display:block;text-transform:uppercase;letter-spacing:.5px}
+/* EDI 컬럼 */
+.edi-col{display:table-cell}
+
+/* ── Result ──────────────────────────────────────── */
+.result-card{background:#fff;border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+.result-head{display:flex;align-items:center;justify-content:space-between;
+             padding:12px 18px;border-bottom:1px solid var(--gray-200);flex-wrap:wrap;gap:8px}
+.result-count{font-size:12px;color:var(--gray-600)}
+.result-count strong{color:var(--blue);font-size:15px}
+.result-keyword{font-size:11px;background:var(--blue-ll);color:var(--blue);
+                padding:3px 10px;border-radius:20px;font-weight:600}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--gray-50)}
+th{padding:10px 13px;font-size:10px;font-weight:700;color:var(--gray-500);
+   text-align:left;white-space:nowrap;border-bottom:1px solid var(--gray-200)}
+th.num{text-align:right}
+td{padding:12px 13px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--blue-ll)}
+.td-hospital{font-weight:600;color:var(--gray-800);white-space:nowrap}
+.td-item{color:var(--gray-800)}
+.td-item mark{background:none;color:var(--blue);font-weight:700}
+.td-addr{color:var(--gray-500);white-space:nowrap;font-size:11px}
+.badge{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;
+       font-weight:600;white-space:nowrap;background:var(--blue-l);color:var(--blue-d)}
+.badge.종합{background:#dcfce7;color:#166534}
+.badge.의원{background:#fef9c3;color:#854d0e}
+.badge.한방{background:#fce7f3;color:#9d174d}
+.badge.치과{background:#e0e7ff;color:#3730a3}
+.td-price{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.td-price.cur{font-weight:700;color:var(--blue-d);font-size:13px}
+.td-price.min{color:var(--green)}
+.td-price.max{color:var(--red)}
+
+/* 페이지네이션 */
+.pagination{display:flex;align-items:center;justify-content:center;gap:4px;
+            padding:14px;border-top:1px solid var(--gray-200)}
+.page-btn{padding:6px 12px;border:1.5px solid var(--gray-200);border-radius:7px;
+          background:#fff;color:var(--gray-600);font-size:12px;cursor:pointer;transition:all .2s;min-width:34px;text-align:center}
+.page-btn:hover:not(:disabled):not(.active){border-color:var(--blue);color:var(--blue)}
+.page-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.page-btn:disabled{opacity:.35;cursor:not-allowed}
+.page-ellipsis{color:var(--gray-400);padding:0 2px}
+
+/* 상태 */
+.loading{text-align:center;padding:60px 20px;background:#fff;border-radius:16px;box-shadow:var(--shadow)}
+.spinner{width:40px;height:40px;border:4px solid var(--gray-200);border-top-color:var(--blue);
+         border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{color:var(--gray-500);font-size:13px}
+.empty{text-align:center;padding:70px 20px;background:#fff;border-radius:16px;box-shadow:var(--shadow)}
+.empty .empty-icon{font-size:48px}
+.empty h3{margin:12px 0 6px;font-size:16px}
+.empty p{color:var(--gray-500);font-size:12px}
+.error-bar{background:#fef2f2;border:1.5px solid #fca5a5;color:var(--red);
+           padding:12px 15px;border-radius:var(--radius);font-size:12px;margin-bottom:16px}
+.intro{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:640px){.intro{grid-template-columns:1fr}}
+.intro-card{background:#fff;border-radius:14px;padding:24px 18px;text-align:center;box-shadow:var(--shadow)}
+.intro-card .icon{font-size:32px}
+.intro-card h3{margin:10px 0 6px;font-size:14px;color:var(--gray-800)}
+.intro-card p{font-size:11px;color:var(--gray-500);line-height:1.7}
+
+/* ── Result 영역 ─────────────────────────────────── */
+#cache-bar{flex-shrink:0}
+#result-area{flex:1;min-height:0;overflow-y:auto}
+#result-area::-webkit-scrollbar{width:5px}
+#result-area::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:3px}
+
+/* ── 챗봇 패널 ───────────────────────────────────── */
+.chat-panel{background:#fff;border-radius:16px;box-shadow:var(--shadow);
+            display:flex;flex-direction:column;height:100%}
+.chat-head{padding:14px 16px;border-bottom:1px solid var(--gray-200);
+           display:flex;align-items:center;justify-content:space-between}
+.chat-head-left{display:flex;align-items:center;gap:8px}
+.chat-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.chat-head-title{font-size:13px;font-weight:700;color:var(--gray-800)}
+.chat-head-sub{font-size:10px;color:var(--gray-500);margin-top:1px}
+.model-select{font-size:10px;border:1px solid var(--gray-200);border-radius:6px;
+              padding:3px 6px;color:var(--gray-600);background:var(--gray-50);outline:none;max-width:160px}
+
+.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.chat-messages::-webkit-scrollbar{width:4px}
+.chat-messages::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:2px}
+
+.msg{display:flex;gap:8px;max-width:100%}
+.msg.user{flex-direction:row-reverse}
+.msg-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            font-size:14px;flex-shrink:0;margin-top:2px}
+.msg.bot .msg-avatar{background:var(--blue-ll)}
+.msg.user .msg-avatar{background:#f3e8ff}
+.msg-bubble{padding:10px 13px;border-radius:12px;font-size:12px;line-height:1.65;max-width:calc(100% - 44px);word-break:break-word}
+.msg.bot .msg-bubble{background:var(--gray-50);color:var(--gray-800);border-radius:4px 12px 12px 12px}
+.msg.user .msg-bubble{background:var(--blue);color:#fff;border-radius:12px 4px 12px 12px}
+.msg-bubble strong{font-weight:700}
+.msg-bubble .search-chip{display:inline-block;margin-top:6px;padding:4px 10px;
+  background:var(--blue-l);color:var(--blue-d);border-radius:20px;font-size:11px;font-weight:600;cursor:pointer}
+.msg-bubble .search-chip:hover{background:var(--blue-l);text-decoration:underline}
+.msg-time{font-size:10px;color:var(--gray-400);margin-top:4px;
+          align-self:flex-end;padding-bottom:2px}
+
+.typing-dot{display:flex;gap:4px;padding:4px 2px}
+.typing-dot span{width:7px;height:7px;border-radius:50%;background:var(--gray-400);animation:bounce .9s infinite}
+.typing-dot span:nth-child(2){animation-delay:.15s}
+.typing-dot span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+
+.chat-footer{padding:12px;border-top:1px solid var(--gray-200)}
+.chat-input-wrap{display:flex;gap:8px}
+#chat-input{flex:1;padding:10px 13px;border:1.5px solid var(--gray-200);border-radius:10px;
+            font-size:13px;outline:none;resize:none;font-family:inherit;line-height:1.4;
+            max-height:80px;overflow-y:auto;background:var(--gray-50);transition:border-color .2s}
+#chat-input:focus{border-color:var(--blue);background:#fff}
+.btn-send{padding:10px 16px;background:var(--blue);border:none;border-radius:10px;
+          color:#fff;font-size:16px;cursor:pointer;transition:background .2s;flex-shrink:0}
+.btn-send:hover:not(:disabled){background:var(--blue-d)}
+.btn-send:disabled{opacity:.45;cursor:not-allowed}
+.chat-hints{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.hint{padding:4px 9px;border:1px solid var(--gray-200);border-radius:16px;font-size:11px;
+      color:var(--gray-600);cursor:pointer;background:#fff;transition:all .15s}
+.hint:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-ll)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr">
+    <div class="hdr-icon">🏥</div>
+    <div style="flex:1">
+      <h1>전국 병원 비급여진료비 조회</h1>
+      <p>건강보험심사평가원(HIRA) 공개 데이터 · 항목명 포함검색 · AI 챗봇 안내
+        <span id="data-updated" style="display:none;margin-left:8px;opacity:.8">
+          · 데이터 기준: <strong id="data-updated-time"></strong>
+        </span>
+      </p>
+    </div>
+    <a href="/change-password" style="font-size:11px;color:rgba(255,255,255,.75);background:rgba(255,255,255,.15);
+       border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:5px 12px;
+       text-decoration:none;white-space:nowrap;margin-right:6px;transition:background .2s"
+       onmouseover="this.style.background='rgba(255,255,255,.25)'"
+       onmouseout="this.style.background='rgba(255,255,255,.15)'">비밀번호 변경</a>
+    <a href="/logout" style="font-size:11px;color:rgba(255,255,255,.75);background:rgba(255,255,255,.15);
+       border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:5px 12px;
+       text-decoration:none;white-space:nowrap;transition:background .2s"
+       onmouseover="this.style.background='rgba(255,255,255,.25)'"
+       onmouseout="this.style.background='rgba(255,255,255,.15)'">로그아웃</a>
+  </div>
+</header>
+
+<div class="layout">
+<!-- ── 왼쪽: 검색 + 결과 ─────────────────────── -->
+<div class="main-col">
+
+{% if not has_key %}
+<div class="notice" id="notice">
+  <div class="notice-bar">
+    <span>📋 &nbsp;현재 <strong>샘플 데이터</strong>로 동작 중입니다. 전국 모든 병원의 실제 비급여 데이터를 조회하려면 <strong>HIRA API 키</strong> 설정이 필요합니다.</span>
+    <button class="notice-toggle" onclick="toggleNotice()">API 키 발급 방법 ▾</button>
+  </div>
+  <div class="notice-body" id="notice-body">
+    <p style="color:#92400e;font-weight:600;margin-bottom:10px">⚠️ 샘플 데이터는 일부 병원만 포함되어 있으며 실제 금액과 다를 수 있습니다. 아래 절차로 API 키를 발급하면 전국 모든 병원의 실제 신고금액을 조회할 수 있습니다.</p>
+    <ol>
+      <li><a href="https://www.data.go.kr" target="_blank">data.go.kr</a> → 회원가입 · 로그인</li>
+      <li>검색창에 <strong>"건강보험심사평가원_비급여진료비정보"</strong> 입력 → 오픈API 선택</li>
+      <li><strong>활용신청</strong> (즉시 승인) → <strong>일반 인증키(Decoding)</strong> 복사</li>
+      <li>터미널에서 아래 명령으로 실행:</li>
+    </ol>
+    <pre>cd /Users/youn/hira-app
+HIRA_API_KEY=발급받은키를여기에입력 python3 app.py</pre>
+    <p style="margin-top:8px;color:#78350f">✅ API 키 설정 후에는 삼성창원병원 등 <strong>전국 모든 병원</strong>의 실제 비급여 신고금액을 조회할 수 있습니다.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- 항목 구분 탭 -->
+<div class="gbn-tabs" id="gbn-tabs">
+  {% for code, label, icon in gbn_codes %}
+  <button class="gbn-tab {% if loop.first %}active{% endif %}"
+          data-code="{{ code }}"
+          onclick="selectGbn('{{ code }}', this)">
+    <span class="gbn-icon">{{ icon }}</span>
+    <span class="gbn-label">{{ label }}</span>
+    <span class="gbn-cnt" id="gbn-cnt-{{ code or 'all' }}"></span>
+  </button>
+  {% endfor %}
+</div>
+
+<!-- 캐시 로딩 진행률 바 -->
+<div id="cache-bar" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:13px;color:#1d4ed8;font-weight:600">⚡ 전국 비급여 데이터 로딩 중...</span>
+    <span id="cache-pct" style="font-size:13px;color:#1d4ed8;font-weight:700">0%</span>
+  </div>
+  <div style="background:#dbeafe;border-radius:999px;height:6px;overflow:hidden">
+    <div id="cache-bar-inner" style="background:#2563eb;height:100%;width:0%;transition:width 0.5s ease;border-radius:999px"></div>
+  </div>
+  <div id="cache-bar-sub" style="font-size:11px;color:#64748b;margin-top:6px">로딩 완료 시 전체 검색 가능</div>
+</div>
+
+<!-- 검색 폼 -->
+<div class="search-card">
+  <div class="search-hero">
+    <label style="font-size:14px;font-weight:700;color:var(--gray-700);margin-bottom:8px;display:block">
+      찾고 싶은 검사·치료를 입력하세요
+    </label>
+    <div class="search-input-wrap">
+      <input type="text" id="itemNm" placeholder="예: MRI, 도수치료, 초음파, 백내장, 임플란트..."
+             autocomplete="off" oninput="onItemInput()" onkeydown="onItemKey(event)">
+      <ul id="ac-list"></ul>
+      <button class="btn btn-search" id="search-btn" onclick="doSearch(1)">검색</button>
+    </div>
+
+    <!-- 빠른 검색 태그 (카테고리별) -->
+    <div style="margin-bottom:4px">
+      <div class="tag-group">
+        <span class="tag-group-label">영상검사</span>
+        <div class="search-tags" style="margin-bottom:0">
+          {% for tag in ["MRI","CT","초음파","PET-CT","X-ray"] %}
+          <button class="search-tag" onclick="quickSearch('{{ tag }}')">{{ tag }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="tag-group" style="margin-top:6px">
+        <span class="tag-group-label">재활·통증</span>
+        <div class="search-tags" style="margin-bottom:0">
+          {% for tag in ["도수치료","체외충격파","증식치료","DNA주사","신경치료"] %}
+          <button class="search-tag" onclick="quickSearch('{{ tag }}')">{{ tag }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="tag-group" style="margin-top:6px">
+        <span class="tag-group-label">수술·시술</span>
+        <div class="search-tags" style="margin-bottom:0">
+          {% for tag in ["백내장수술","임플란트","수면내시경","레이저치료","로봇수술"] %}
+          <button class="search-tag" onclick="quickSearch('{{ tag }}')">{{ tag }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="tag-group" style="margin-top:6px">
+        <span class="tag-group-label">예방·건강검진</span>
+        <div class="search-tags" style="margin-bottom:0">
+          {% for tag in ["독감예방접종","건강검진","HPV백신","대장내시경","유방촬영"] %}
+          <button class="search-tag" onclick="quickSearch('{{ tag }}')">{{ tag }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 필터 -->
+  <div class="filter-row">
+    <div class="field">
+      <label>지역</label>
+      <select id="sidoCd">
+        {% for code, label in sido_codes %}
+        <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>병원 종별</label>
+      <select id="clCd">
+        {% for code, label in cl_codes %}
+        <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>병원명</label>
+      <input type="text" id="yadmNm" placeholder="병원명 입력 시 의원·병원급도 조회"
+             onkeydown="if(event.key==='Enter') doSearch(1)">
+    </div>
+    <div class="field">
+      <label>EDI 코드</label>
+      <input type="text" id="ediCd" placeholder="예: HE1001, BTS01019" style="text-transform:uppercase"
+             onkeydown="if(event.key==='Enter') doSearch(1)">
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-reset" onclick="resetForm()">초기화</button>
+  </div>
+</div>
+
+<!-- 결과 영역 -->
+<div id="result-area">
+  <div class="intro">
+    <div class="intro-card"><div class="icon">🔍</div><h3>원하는 검사·치료 검색</h3><p>MRI, 도수치료, 초음파 등<br>항목명 일부만 입력하면 됩니다</p></div>
+    <div class="intro-card"><div class="icon">💰</div><h3>병원별 금액 한눈 비교</h3><p>현재·최저·최고 금액을<br>전국 병원 단위로 비교하세요</p></div>
+    <div class="intro-card"><div class="icon">🤖</div><h3>AI 챗봇 질문</h3><p>검사·치료 궁금한 점은<br>오른쪽 챗봇에게 물어보세요</p></div>
+  </div>
+</div>
+
+</div><!-- /main-col -->
+
+<!-- ── 오른쪽: 챗봇 ────────────────────────────── -->
+<div class="chat-panel">
+  <div class="chat-head">
+    <div class="chat-head-left">
+      <div class="chat-dot"></div>
+      <div>
+        <div class="chat-head-title">🤖 비급여 안내 챗봇</div>
+        <div class="chat-head-sub">비급여 항목 · 의료비 궁금증 답변</div>
+      </div>
+    </div>
+    <select class="model-select" id="model-select" onchange="changeModel(this.value)">
+      <option value="qwen2.5:14b-instruct-q4_K_M">qwen2.5:14b</option>
+    </select>
+  </div>
+
+  <div class="chat-messages" id="chat-messages">
+    <div class="msg bot">
+      <div class="msg-avatar">🏥</div>
+      <div>
+        <div class="msg-bubble">
+          안녕하세요! 전국 병원 비급여진료비 안내 챗봇입니다.<br><br>
+          궁금한 비급여 항목을 물어보시면 검색 도움을 드릴게요.<br>
+          예: <em>"뇌 MRI 비용이 얼마예요?"</em>, <em>"도수치료 받을 수 있는 병원 찾아줘"</em>
+        </div>
+        <div class="msg-time">지금</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-footer">
+    <div class="chat-hints">
+      <button class="hint" onclick="sendHint('MRI 비용이 얼마예요?')">MRI 비용</button>
+      <button class="hint" onclick="sendHint('도수치료란 무엇인가요?')">도수치료 설명</button>
+      <button class="hint" onclick="sendHint('비급여 항목이 뭔가요?')">비급여란?</button>
+      <button class="hint" onclick="sendHint('초음파 검사 비용 알려줘')">초음파 비용</button>
+    </div>
+    <div class="chat-input-wrap">
+      <textarea id="chat-input" rows="1" placeholder="비급여 항목이나 의료비를 물어보세요..."
+                onkeydown="chatKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="btn-send" id="send-btn" onclick="sendMessage()">↑</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /layout -->
+
+<footer>데이터 출처: 건강보험심사평가원(HIRA) 비급여진료비 공개정보 &nbsp;|&nbsp; 실제 진료비는 병원마다 다를 수 있습니다</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   검색 기능
+══════════════════════════════════════════════════ */
+let allItems   = [];
+let acFiltered = [];
+let acIndex    = -1;
+let currentPage = 1;
+let totalCount  = 0;
+let lastQuery   = {};
+const NUM_ROWS  = 50;
+let currentGbn  = '';   // 현재 선택된 항목구분 코드
+let cacheReady  = false;
+
+// ── 캐시 상태 폴링 ──────────────────────────────────────────────
+async function pollCacheStatus() {
+  try {
+    const r = await fetch('/api/cache-status');
+    const d = await r.json();
+    const bar    = document.getElementById('cache-bar');
+    const inner  = document.getElementById('cache-bar-inner');
+    const pctEl  = document.getElementById('cache-pct');
+    const subEl  = document.getElementById('cache-bar-sub');
+
+    if (d.state === 'loading') {
+      bar.style.display = 'block';
+      inner.style.width = d.pct + '%';
+      pctEl.textContent = d.pct + '%';
+      const fileHint = d.file?.exists ? '' : ' · 완료 시 파일 저장됨';
+      subEl.textContent = `${(d.count||0).toLocaleString()}건 로딩됨 (${d.pagesDone}/${d.pagesTotal} 페이지)${fileHint}`;
+      setTimeout(pollCacheStatus, 3000);
+    } else if (d.state === 'ready') {
+      cacheReady = true;
+      const fromFile  = d.file?.exists;
+      const fileAge   = d.file?.ageMins;
+      const updatedAt = d.file?.updatedAt;
+      const ageStr    = fromFile ? (fileAge < 60 ? `${fileAge}분 전 저장` : `${Math.round(fileAge/60)}시간 전 저장`) : '';
+      bar.style.display = 'block';
+      inner.style.width = '100%';
+      pctEl.textContent = '100%';
+      subEl.innerHTML = `✅ <strong>${(d.count||0).toLocaleString()}건</strong> 로드 완료${ageStr ? ` <span style="opacity:.6">(${ageStr})</span>` : ''} — 초고속 검색 활성화!`;
+      document.getElementById('cache-bar').style.background = '#f0fdf4';
+      document.getElementById('cache-bar').style.borderColor = '#bbf7d0';
+      pctEl.style.color = '#16a34a';
+      document.querySelector('#cache-bar span:first-child').style.color = '#16a34a';
+      inner.style.background = '#16a34a';
+      // 헤더 데이터 기준 시각 표시
+      if (updatedAt) {
+        document.getElementById('data-updated-time').textContent = updatedAt;
+        document.getElementById('data-updated').style.display = 'inline';
+      }
+      setTimeout(() => { bar.style.display = 'none'; }, 6000);
+    } else if (d.state === 'idle') {
+      setTimeout(pollCacheStatus, 2000);
+    }
+    // error: 표시 안 함
+  } catch(e) {
+    setTimeout(pollCacheStatus, 5000);
+  }
+}
+pollCacheStatus();
+
+// 항목구분 탭 메타
+const GBN_META = {
+  '':   {label:'전체',     icon:'🏥', color:'#2563eb'},
+  '01': {label:'행위',     icon:'💊', color:'#7c3aed'},
+  '03': {label:'치료재료', icon:'🩹', color:'#d97706'},
+  '99': {label:'기타',     icon:'📋', color:'#64748b'},
+};
+
+async function loadItems() {
+  try {
+    const r = await fetch('/api/items');
+    const d = await r.json();
+    allItems = d.items || [];
+  } catch(e) {}
+}
+
+function onItemInput() {
+  const val  = document.getElementById('itemNm').value.trim();
+  const list = document.getElementById('ac-list');
+  acIndex    = -1;
+  if (!val) { list.style.display='none'; return; }
+
+  acFiltered = allItems.filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0,14);
+  if (!acFiltered.length) { list.style.display='none'; return; }
+
+  const esc = val.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  list.innerHTML = acFiltered.map((n,i) => {
+    const hi = n.replace(new RegExp(esc,'gi'), m => `<mark>${m}</mark>`);
+    return `<li data-idx="${i}" onmousedown="selectItem(${i})"><span class="ac-icon">🔍</span>${hi}</li>`;
+  }).join('');
+  list.style.display = 'block';
+}
+
+function selectItem(idx) {
+  document.getElementById('itemNm').value = acFiltered[idx];
+  document.getElementById('ac-list').style.display = 'none';
+}
+
+function onItemKey(e) {
+  const list  = document.getElementById('ac-list');
+  const items = list.querySelectorAll('li');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acIndex = Math.min(acIndex+1, items.length-1);
+    items.forEach((li,i) => li.classList.toggle('active', i===acIndex));
+    if (acIndex >= 0) document.getElementById('itemNm').value = acFiltered[acIndex];
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acIndex = Math.max(acIndex-1, -1);
+    items.forEach((li,i) => li.classList.toggle('active', i===acIndex));
+    if (acIndex >= 0) document.getElementById('itemNm').value = acFiltered[acIndex];
+  } else if (e.key === 'Enter') {
+    list.style.display = 'none';
+    doSearch(1);
+  } else if (e.key === 'Escape') {
+    list.style.display = 'none';
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#itemNm') && !e.target.closest('#ac-list'))
+    document.getElementById('ac-list').style.display = 'none';
+});
+
+function quickSearch(keyword) {
+  document.getElementById('itemNm').value = keyword;
+  currentGbn = '';
+  document.querySelectorAll('.gbn-tab').forEach((t,i) => t.classList.toggle('active', i===0));
+  doSearch(1);
+}
+
+function selectGbn(code, el) {
+  currentGbn = code;
+  document.querySelectorAll('.gbn-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  // 검색어가 있으면 즉시 재검색
+  const hasQuery = document.getElementById('itemNm').value.trim() ||
+                   document.getElementById('yadmNm').value.trim() ||
+                   document.getElementById('sidoCd').value ||
+                   document.getElementById('clCd').value ||
+                   document.getElementById('ediCd').value.trim();
+  if (hasQuery) doSearch(1);
+}
+
+function gbnBadge(gbn) {
+  const styles = {
+    '행위':     'background:#ede9fe;color:#5b21b6',
+    '약제':     'background:#d1fae5;color:#065f46',
+    '치료재료': 'background:#fef3c7;color:#92400e',
+    '기타':     'background:#f1f5f9;color:#475569',
+  };
+  const style = styles[gbn] || 'background:#f1f5f9;color:#475569';
+  const icons = {'행위':'💊','약제':'🧪','치료재료':'🩹','기타':'📋'};
+  const icon  = icons[gbn] || '';
+  return gbn
+    ? `<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;white-space:nowrap;${style}">${icon} ${gbn}</span>`
+    : '<span style="color:#94a3b8;font-size:11px">-</span>';
+}
+
+async function doSearch(page) {
+  const q = {
+    itemNm: document.getElementById('itemNm').value.trim(),
+    sidoCd: document.getElementById('sidoCd').value,
+    clCd:   document.getElementById('clCd').value,
+    yadmNm: document.getElementById('yadmNm').value.trim(),
+    ediCd:  document.getElementById('ediCd').value.trim().toUpperCase(),
+  };
+
+  if (!q.itemNm && !q.yadmNm && !q.sidoCd && !q.clCd && !q.ediCd) {
+    showError('항목명 또는 EDI 코드를 입력하거나 필터를 선택해주세요.');
+    return;
+  }
+
+  lastQuery = q; currentPage = page;
+  const btn = document.getElementById('search-btn');
+  btn.textContent = '검색 중...'; btn.disabled = true;
+  // 지역/병원 없이 항목명만 검색 시 안내 포함한 로딩 메시지
+  const itemOnly = q.itemNm && !q.sidoCd && !q.clCd && !q.yadmNm;
+  showLoading(itemOnly);
+
+  if (currentGbn) q.gbnCd = currentGbn;
+  const params = new URLSearchParams({ pageNo: page, numOfRows: NUM_ROWS, ...q });
+  try {
+    const res  = await fetch(`/api/search?${params}`);
+    const data = await res.json();
+
+    if (data.error === 'API_KEY_MISSING') { showError('API 키가 설정되지 않았습니다.'); return; }
+    if (data.error) { showError('조회 오류: ' + data.error); return; }
+
+    totalCount = data.totalCount || 0;
+    renderTable(data.items || [], q.itemNm, data.isMock, data.filteredCount, data.scanned, data.limited,
+                data.fromCache, data.cachePartial, data.cachePct, data.cacheCount, q.yadmNm, q.clCd);
+    renderPagination(data.filteredCount || totalCount, page);
+  } catch(e) {
+    showError('서버와 연결할 수 없습니다.');
+  } finally {
+    btn.textContent = '검색'; btn.disabled = false;
+  }
+}
+
+function showLoading(itemOnly) {
+  const hint = itemOnly
+    ? `<p style="font-size:12px;color:var(--gray-400);margin-top:6px">💡 지역이나 병원명을 함께 입력하면 더 빠르게 조회됩니다</p>`
+    : '';
+  document.getElementById('result-area').innerHTML =
+    `<div class="loading"><div class="spinner"></div><p>비급여 데이터를 불러오는 중...</p>${hint}</div>`;
+}
+
+function showError(msg) {
+  document.getElementById('result-area').innerHTML =
+    `<div class="error-bar">⚠️ ${msg}</div>`;
+}
+
+function highlight(text, kw) {
+  if (!kw || !text) return text || '';
+  return text.replace(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),
+    m => `<mark>${m}</mark>`);
+}
+
+function won(n) {
+  if (n == null || n === '') return '-';
+  return Number(n).toLocaleString('ko-KR') + '원';
+}
+
+function badgeClass(nm) {
+  if (!nm) return '';
+  if (nm.includes('종합')) return '종합';
+  if (nm.includes('의원')) return '의원';
+  if (nm.includes('한방') || nm.includes('한의')) return '한방';
+  if (nm.includes('치과')) return '치과';
+  return '';
+}
+
+function renderTable(items, kw, isMock, filteredCount, scanned, limited, fromCache, cachePartial, cachePct, cacheCount, yadmNm, clCd) {
+  if (!items.length) {
+    document.getElementById('result-area').innerHTML =
+      `<div class="empty"><div class="empty-icon">🔎</div>
+       <h3>검색 결과가 없습니다</h3>
+       <p>다른 항목명이나 조건으로 다시 시도해보세요.</p></div>`;
+    return;
+  }
+
+  const rows = items.map(it => `
+    <tr>
+      <td class="td-hospital">
+        ${it.pinned ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:1px 5px;border-radius:4px;font-weight:700;margin-right:4px">경남</span>` : ''}
+        <span>${it.yadmNm||'-'}</span>
+        ${it.urlAddr ? `<br><a href="${it.urlAddr}" target="_blank"
+          style="display:inline-block;margin-top:3px;font-size:10px;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:1px 7px;text-decoration:none;white-space:nowrap"
+          title="비급여 공시 페이지 바로가기">🏠 홈페이지</a>` : ''}
+      </td>
+      <td><span class="badge ${badgeClass(it.clCdNm)}">${it.clCdNm||'-'}</span></td>
+      <td class="td-addr">${(it.addr||'').split(' ').slice(0,3).join(' ')}</td>
+      <td>${gbnBadge(it.gbnCdNm||it.gbnCd||'')}</td>
+      <td class="td-item">${highlight(it.itemNm||'-', kw)}${it.itemNmHosp && it.itemNmHosp !== it.itemNm ? `<br><span style="font-size:11px;color:var(--gray-400)">${it.itemNmHosp}</span>` : ''}</td>
+      <td class="edi-col" style="font-size:11px;color:var(--gray-500);white-space:nowrap;font-family:monospace">${it.npayCd||'-'}</td>
+      <td class="td-price cur">${won(it.curAmt)}</td>
+      <td class="td-price min">${won(it.minAmt)}</td>
+      <td class="td-price max">${won(it.maxAmt)}</td>
+    </tr>`).join('');
+
+  document.getElementById('result-area').innerHTML = `
+    <div class="result-card" id="result-card">
+      <div class="result-head">
+        <span class="result-count">
+          ${(kw || currentGbn)
+            ? `<strong>${(filteredCount||0).toLocaleString()}</strong>건 매칭 <span style="font-size:11px;color:var(--gray-400)">(${(scanned||0).toLocaleString()}건 스캔)</span>`
+            : `총 <strong>${totalCount.toLocaleString()}</strong>건`}
+        </span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          ${currentGbn ? `<span style="font-size:11px;background:${GBN_META[currentGbn]?.color||'#2563eb'}1a;color:${GBN_META[currentGbn]?.color||'#2563eb'};padding:3px 10px;border-radius:20px;font-weight:600">${GBN_META[currentGbn]?.icon} ${GBN_META[currentGbn]?.label}</span>` : ''}
+          ${kw ? `<span class="result-keyword">"${kw}" 포함검색</span>` : ''}
+          ${fromCache && !cachePartial ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:20px;font-weight:600">⚡ 전체 ${(cacheCount||0).toLocaleString()}건 검색</span>` : ''}
+          ${cachePartial ? `<span style="font-size:10px;background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:20px;font-weight:600">⏳ 로딩중 ${cachePct}% · 부분결과</span>` : ''}
+          ${isMock ? `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:20px;font-weight:600">📋 샘플데이터</span>` : ''}
+        </div>
+      </div>
+      ${(!yadmNm && !clCd) ? `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#0369a1;display:flex;align-items:center;gap:8px">
+        <span>🏥</span>
+        <span><strong>종합병원·상급종합</strong>만 표시 중입니다. 의원·병원급도 보려면 <strong>병원명</strong>을 입력하세요.</span>
+      </div>` : ''}
+      ${limited ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#1d4ed8;display:flex;align-items:center;gap:8px">
+        <span>⚡</span>
+        <span>빠른 검색을 위해 <strong>300건</strong>만 스캔했습니다. 더 많은 결과를 보려면 <strong>지역</strong> 또는 <strong>병원명</strong>을 함께 입력해 주세요.</span>
+      </div>` : ''}
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>병원명</th><th>종별</th><th>지역</th>
+            <th>구분</th>
+            <th>비급여 항목명</th>
+            <th class="edi-col" style="font-size:11px">EDI코드</th>
+            <th class="num">현재금액</th>
+            <th class="num" style="color:var(--green)">최저</th>
+            <th class="num" style="color:var(--red)">최고</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div id="pagination"></div>
+    </div>`;
+}
+
+function renderPagination(total, page) {
+  const totalPages = Math.ceil(total / NUM_ROWS);
+  if (totalPages <= 1) return;
+  const pEl = document.getElementById('pagination');
+  if (!pEl) return;
+
+  let html = '<div class="pagination">';
+  html += `<button class="page-btn" onclick="doSearch(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+  pageRange(page, totalPages).forEach(p => {
+    if (p === '...') html += `<span class="page-ellipsis">…</span>`;
+    else html += `<button class="page-btn ${p===page?'active':''}" onclick="doSearch(${p})">${p}</button>`;
+  });
+  html += `<button class="page-btn" onclick="doSearch(${page+1})" ${page>=totalPages?'disabled':''}>›</button>`;
+  html += '</div>';
+  pEl.innerHTML = html;
+}
+
+function pageRange(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  const r=[1];
+  if (cur>3) r.push('...');
+  for(let p=Math.max(2,cur-1);p<=Math.min(total-1,cur+1);p++) r.push(p);
+  if(cur<total-2) r.push('...');
+  r.push(total);
+  return r;
+}
+
+function resetForm() {
+  ['itemNm','yadmNm','ediCd'].forEach(id=>document.getElementById(id).value='');
+  ['sidoCd','clCd'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ac-list').style.display='none';
+  document.getElementById('result-area').innerHTML=`
+    <div class="intro">
+      <div class="intro-card"><div class="icon">🔍</div><h3>원하는 검사·치료 검색</h3><p>MRI, 도수치료, 초음파 등<br>항목명 일부만 입력하면 됩니다</p></div>
+      <div class="intro-card"><div class="icon">💰</div><h3>병원별 금액 한눈 비교</h3><p>현재·최저·최고 금액을<br>전국 병원 단위로 비교하세요</p></div>
+      <div class="intro-card"><div class="icon">🤖</div><h3>AI 챗봇 질문</h3><p>검사·치료 궁금한 점은<br>오른쪽 챗봇에게 물어보세요</p></div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════
+   챗봇 기능
+══════════════════════════════════════════════════ */
+let chatHistory = [];
+let isChatting  = false;
+let currentModel = '{{ chat_model }}';
+
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    const sel = document.getElementById('model-select');
+    sel.innerHTML = d.models.map(m =>
+      `<option value="${m}" ${m===d.current?'selected':''}>${m.split(':')[0]}:${m.split(':')[1]||''}</option>`
+    ).join('');
+    currentModel = d.current;
+  } catch(e) {}
+}
+
+function changeModel(m) { currentModel = m; }
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+}
+
+function chatKey(e) {
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function sendHint(text) {
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+function now() {
+  return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+}
+
+function appendMsg(role, content, id) {
+  const wrap = document.getElementById('chat-messages');
+  const isUser = role==='user';
+  const div = document.createElement('div');
+  div.className = `msg ${isUser?'user':'bot'}`;
+  if (id) div.id = id;
+  div.innerHTML = `
+    <div class="msg-avatar">${isUser?'👤':'🏥'}</div>
+    <div>
+      <div class="msg-bubble">${content}</div>
+      <div class="msg-time">${now()}</div>
+    </div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const wrap = document.getElementById('chat-messages');
+  const div  = document.createElement('div');
+  div.className = 'msg bot'; div.id = 'typing-indicator';
+  div.innerHTML = `<div class="msg-avatar">🏥</div>
+    <div><div class="msg-bubble"><div class="typing-dot"><span></span><span></span><span></span></div></div></div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+function parseSearchCmd(text) {
+  const m = text.match(/\[SEARCH:([^\]]+)\]/);
+  return m ? m[1].trim() : null;
+}
+
+function renderBotContent(raw) {
+  let html = raw
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\[SEARCH:([^\]]+)\]/g, (_, kw) =>
+      `<br><span class="search-chip" onclick="triggerSearch('${kw.replace(/'/g,"\\'")}')">🔍 "${kw}" 검색하기</span>`)
+    .replace(/\n/g,'<br>');
+  return html;
+}
+
+function triggerSearch(kw) {
+  document.getElementById('itemNm').value = kw;
+  document.querySelector('.main-col').scrollIntoView({behavior:'smooth'});
+  doSearch(1);
+}
+
+async function sendMessage() {
+  if (isChatting) return;
+  const input = document.getElementById('chat-input');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = ''; input.style.height='auto';
+  isChatting = true;
+  document.getElementById('send-btn').disabled = true;
+
+  appendMsg('user', text.replace(/</g,'&lt;'));
+  chatHistory.push({role:'user', content: text});
+
+  showTyping();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({messages: chatHistory, model: currentModel})
+    });
+
+    removeTyping();
+    const botDiv = appendMsg('bot', '<span class="typing-dot"><span></span><span></span><span></span></span>');
+    const bubble = botDiv.querySelector('.msg-bubble');
+    const wrap   = document.getElementById('chat-messages');
+
+    let fullText = '';
+    let hasError = false;
+    const reader = res.body.getReader();
+    const dec    = new TextDecoder();
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const lines = dec.decode(value).split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          const d = JSON.parse(line);
+          if (d.error) {
+            hasError = true;
+            bubble.innerHTML = `<span style="color:#dc2626;font-weight:600">⚠️ ${d.error}</span>`;
+            wrap.scrollTop = wrap.scrollHeight;
+            break;
+          }
+          const token = d.message?.content || '';
+          fullText += token;
+          bubble.innerHTML = renderBotContent(fullText) + (d.done ? '' : '▍');
+          wrap.scrollTop = wrap.scrollHeight;
+          if (d.done) break;
+        } catch(e) {}
+      }
+      if (hasError) break;
+    }
+
+    if (!hasError) {
+      bubble.innerHTML = renderBotContent(fullText);
+      chatHistory.push({role:'assistant', content: fullText});
+    }
+
+  } catch(e) {
+    removeTyping();
+    appendMsg('bot', '⚠️ 챗봇 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
+  } finally {
+    isChatting = false;
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+function toggleNotice() {
+  const body = document.getElementById('notice-body');
+  const btn  = document.querySelector('.notice-toggle');
+  if (!body) return;
+  body.classList.toggle('open');
+  btn.textContent = body.classList.contains('open') ? '닫기 ▴' : '발급 방법 ▾';
+}
+
+/* ── 초기화 ───────────────────────────── */
+loadItems();
+loadModels();
+</script>
+</body>
+</html>

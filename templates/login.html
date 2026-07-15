@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>로그인 · 전국 병원 비급여진료비 조회</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#2563eb;--blue-d:#1d4ed8;--blue-l:#dbeafe;--blue-ll:#eff6ff;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;
+  --gray-400:#94a3b8;--gray-500:#64748b;--gray-800:#1e293b;
+  --red:#dc2626;--shadow:0 2px 16px rgba(0,0,0,.09);
+}
+html,body{height:100%}
+body{font-family:'Apple SD Gothic Neo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#f0f4f8;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}
+
+.login-card{background:#fff;border-radius:20px;box-shadow:var(--shadow);
+            padding:40px 36px;width:100%;max-width:380px}
+
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo .icon{font-size:48px}
+.login-logo h1{font-size:18px;font-weight:700;color:var(--gray-800);margin-top:10px}
+.login-logo p{font-size:12px;color:var(--gray-400);margin-top:4px}
+
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:6px}
+.field input{width:100%;padding:11px 14px;border:1.5px solid var(--gray-200);
+             border-radius:10px;font-size:14px;color:var(--gray-800);
+             background:var(--gray-50);outline:none;transition:border-color .2s}
+.field input:focus{border-color:var(--blue);background:#fff}
+
+.error{background:#fef2f2;border:1.5px solid #fca5a5;color:var(--red);
+       padding:10px 14px;border-radius:10px;font-size:12px;margin-bottom:16px;text-align:center}
+
+.btn-login{width:100%;padding:12px;background:var(--blue);color:#fff;border:none;
+           border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
+           transition:background .2s;margin-top:4px}
+.btn-login:hover{background:var(--blue-d)}
+
+.login-footer{text-align:center;margin-top:28px;font-size:11px;color:var(--gray-400)}
+</style>
+</head>
+<body>
+
+<div class="login-card">
+  <div class="login-logo">
+    <div class="icon">🏥</div>
+    <h1>전국 병원 비급여진료비 조회</h1>
+    <p>건강보험심사평가원(HIRA) 공개 데이터</p>
+  </div>
+
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="/login">
+    <div class="field">
+      <label>비밀번호</label>
+      <input type="password" name="password" placeholder="비밀번호를 입력하세요" autofocus>
+    </div>
+    <button type="submit" class="btn-login">로그인</button>
+  </form>
+</div>
+
+<div class="login-footer">데이터 출처: 건강보험심사평가원(HIRA) 비급여진료비 공개정보</div>
+
+</body>
+</html>
