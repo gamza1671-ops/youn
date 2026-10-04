@@ -511,6 +511,11 @@ def load_suga_data():
                 else:
                     col_map[c] = c
             df = df.rename(columns=col_map)
+            # 문자열 컬럼 NaN → 빈 문자열 (float + str 오류 방지)
+            str_cols = ["수가코드", "EDICODE", "명칭", "대분류명칭", "세부분류명칭"]
+            for col in str_cols:
+                if col in df.columns:
+                    df[col] = df[col].fillna("").astype(str)
             for col in ["보험단가", "보호단가", "산재단가", "자보단가", "일반단가"]:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
@@ -523,30 +528,89 @@ def load_suga_data():
     print(f"[Suga] 총 {len(SUGA_DATA):,}건 로드 완료")
 
 
+_KO_STOP = {
+    # 수가 관련 일반명사
+    "수가", "코드", "기준", "단가", "가격", "금액", "수가코드", "edi코드",
+    "보험단가", "산재단가", "자보단가", "일반단가", "보호단가",
+    # 동사·구어체
+    "조회", "확인", "검색", "알려", "줘요", "해줘", "해요", "있어", "없어",
+    "알려줘", "알려주세요", "보여줘", "보여주세요", "찾아줘", "찾아주세요",
+    "말해줘", "설명해줘", "알아봐줘", "조사해줘", "알고", "싶어", "싶어요",
+    "궁금해", "궁금한데", "있나요", "없나요", "인가요", "해줘요", "해주세요",
+    "뭔지", "뭐가", "싶은데", "싶은지", "뭐야", "이야",
+    # 보험 관련 일반명사
+    "보험", "급여", "비급여", "청구", "심사", "인정", "정보", "내용",
+    "관련", "대해", "대한", "관해",
+    # 수량·질문
+    "얼마", "얼마야", "얼마예요", "어떻게", "어떤", "몇", "무엇",
+}
+
+
+def _is_korean(s: str) -> bool:
+    return any("가" <= c <= "힣" for c in s)
+
+
 def search_suga(keyword: str, gbn: str = None, limit: int = 30) -> list:
-    """수가코드·EDICODE·명칭 대상 포함 검색. 여러 토큰은 OR 합집합."""
+    """명칭 포함 검색 + 코드 전방 일치.
+    - 한글 불용어·2자 이하 한글 토큰 제거로 오매칭 방지
+    - 수가코드/EDICODE는 코드형 쿼리 또는 단일 영문 토큰일 때만 검색
+    """
+    import re
     if not keyword or not SUGA_DATA:
         return []
-    kw = keyword.strip().lower()
-    tokens = [t for t in kw.split() if len(t) >= 2]
+
+    kw_orig = keyword.strip()
+    kw = kw_orig.lower()
+
+    # 코드처럼 생긴 쿼리 (영문+숫자, 4자 이상)
+    looks_like_code = bool(re.match(r"^[A-Za-z0-9]{4,}$", kw_orig))
+
+    raw_tokens = kw.split()
+    tokens = []
+    for t in raw_tokens:
+        if t in _KO_STOP:
+            continue
+        if _is_korean(t) and len(t) < 3:   # 2자 이하 한글(수가·코드 등) 제거
+            continue
+        if not _is_korean(t) and len(t) < 2:
+            continue
+        tokens.append(t)
+
     if not tokens:
         tokens = [kw]
+
+    # 코드 검색: 4자 이상 영문+숫자 조합(수가코드형)일 때만 허용
+    allow_code_search = looks_like_code
+
     seen, results = set(), []
     for item in SUGA_DATA:
         if gbn and item.get("구분") != gbn:
             continue
-        nm  = str(item.get("명칭", "")).lower()
-        cd  = str(item.get("수가코드", "")).lower()
-        edi = str(item.get("EDICODE", "")).lower()
-        key = item.get("수가코드", "") + item.get("구분", "")
+        nm  = str(item.get("명칭") or "").lower()
+        key = str(item.get("수가코드") or "") + str(item.get("구분") or "")
         if key in seen:
             continue
-        if any(t in nm or t in cd or t in edi for t in tokens):
+
+        name_match = any(t in nm for t in tokens)
+
+        code_match = False
+        if allow_code_search:
+            cd  = str(item.get("수가코드") or "").lower()
+            edi = str(item.get("EDICODE") or "").lower()
+            code_match = any(
+                cd == t or cd.startswith(t) or edi == t or edi.startswith(t)
+                for t in tokens
+            )
+
+        if name_match or code_match:
             seen.add(key)
-            results.append(item)
-        if len(results) >= limit:
-            break
-    return results
+            # 정렬 기준: 명칭 내 토큰 등장 위치 (앞일수록 더 관련성 높음)
+            pos = min((nm.find(t) for t in tokens if t in nm), default=9999)
+            results.append((pos, item))
+
+    # 위치 기준 오름차순 정렬 후 limit 적용
+    results.sort(key=lambda x: x[0])
+    return [x[1] for x in results[:limit]]
 
 
 SYSTEM_PROMPT = """당신은 전국 병원 비급여진료비 조회 서비스의 전문 안내 챗봇입니다.
