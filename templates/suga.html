@@ -99,8 +99,9 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;
 .bubble-error{color:var(--red);font-weight:600}
 
 /* Input area */
+.input-wrap{position:relative;flex-shrink:0}
 .input-area{background:#fff;border-radius:14px;box-shadow:var(--shadow);
-            padding:10px 12px;display:flex;gap:8px;align-items:flex-end;flex-shrink:0}
+            padding:10px 12px;display:flex;gap:8px;align-items:flex-end}
 #msg-input{flex:1;border:none;outline:none;font-size:13px;color:var(--gray-800);
            resize:none;max-height:100px;min-height:24px;line-height:1.5;
            font-family:inherit;background:transparent}
@@ -112,6 +113,23 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;
 #send-btn:disabled{background:var(--gray-200);cursor:not-allowed}
 #send-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.5;
               stroke-linecap:round;stroke-linejoin:round}
+
+/* 자동완성 드롭업 */
+#suga-ac{position:absolute;bottom:calc(100% + 6px);left:0;right:0;
+         background:#fff;border:1.5px solid var(--gray-200);border-radius:12px;
+         box-shadow:0 -4px 24px rgba(0,0,0,.12);z-index:200;display:none;
+         max-height:260px;overflow-y:auto}
+#suga-ac li{list-style:none;padding:8px 12px;cursor:pointer;font-size:12px;
+            display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--gray-100);
+            transition:background .1s}
+#suga-ac li:last-child{border-bottom:none}
+#suga-ac li:hover,#suga-ac li.ac-on{background:var(--blue-ll)}
+#suga-ac li mark{background:none;color:var(--blue);font-weight:700;font-style:normal}
+.ac-nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-code{color:var(--gray-400);font-size:10px;font-family:monospace;flex-shrink:0}
+.ac-hint{padding:6px 12px;font-size:10px;color:var(--gray-400);border-bottom:1px solid var(--gray-100);
+         display:flex;justify-content:space-between;align-items:center}
+.ac-hint kbd{background:var(--gray-100);padding:1px 5px;border-radius:4px;font-size:9px}
 
 /* Welcome card */
 .welcome{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:16px 20px;flex-shrink:0}
@@ -177,12 +195,15 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;
     </div>
   </div>
 
-  <!-- 입력창 -->
-  <div class="input-area">
-    <textarea id="msg-input" placeholder="수가코드, 약제명, 보험기준 등 자유롭게 질문하세요..." rows="1"></textarea>
-    <button id="send-btn" onclick="sendMsg()" disabled>
-      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
+  <!-- 입력창 + 자동완성 -->
+  <div class="input-wrap">
+    <ul id="suga-ac"></ul>
+    <div class="input-area">
+      <textarea id="msg-input" placeholder="수가코드, 약제명, 보험기준 등 자유롭게 질문하세요..." rows="1" autocomplete="off"></textarea>
+      <button id="send-btn" onclick="sendMsg()" disabled>
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
   </div>
 </main>
 
@@ -297,6 +318,7 @@ async function sendMsg() {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({messages: chatHistory})
     });
+    if (res.status === 401) { location.href = '/login'; return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     removeTyping();
     bubble = appendMsg('bot', '<span style="opacity:.4">…</span>');
@@ -341,16 +363,113 @@ async function sendMsg() {
   inp.focus();
 }
 
-// ── Input auto-resize + Enter send ──────────────────────────────
+// ── 자동완성 ────────────────────────────────────────────────────
+let acTimer = null, acItems = [], acIdx = -1;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const GBN_BADGE = {
+  '약제':     {cls:'badge-약제',    icon:'💊'},
+  '행위':     {cls:'badge-행위',    icon:'🩺'},
+  '치료재료': {cls:'badge-치료재료',icon:'🔩'},
+};
+
+function acBadge(gbn) {
+  const b = GBN_BADGE[gbn] || {cls:'',icon:'📋'};
+  return `<span class="suga-badge ${b.cls}">${b.icon} ${esc(gbn)}</span>`;
+}
+
+function highlight(text, q) {
+  const safe = esc(text);
+  if (!q) return safe;
+  const tokens = q.trim().toLowerCase().split(/\s+/).filter(t=>t.length>=2);
+  let out = safe;
+  tokens.forEach(t => {
+    const re = new RegExp(esc(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi');
+    out = out.replace(re, m => `<mark>${m}</mark>`);
+  });
+  return out;
+}
+
+function showAc(items, q) {
+  const ac = document.getElementById('suga-ac');
+  if (!items.length) { hideAc(); return; }
+  acItems = items; acIdx = -1;
+  const hint = `<li class="ac-hint"><span>항목을 선택하면 입력창에 채워집니다</span><span><kbd>↑↓</kbd> 이동 &nbsp;<kbd>Enter</kbd> 선택 &nbsp;<kbd>Esc</kbd> 닫기</span></li>`;
+  ac.innerHTML = hint + items.map((it, i) => `
+    <li data-i="${i}" onmousedown="selectAc(${i})">
+      ${acBadge(it.구분||'')}
+      <span class="ac-nm">${highlight(it.명칭||'', q)}</span>
+      <span class="ac-code">${esc(it.수가코드||'')}</span>
+    </li>`).join('');
+  ac.style.display = 'block';
+}
+
+function hideAc() {
+  document.getElementById('suga-ac').style.display = 'none';
+  acItems = []; acIdx = -1;
+}
+
+function selectAc(idx) {
+  const item = acItems[idx];
+  if (!item) return;
+  const inp = document.getElementById('msg-input');
+  inp.value = item.명칭;
+  inp.style.height = 'auto';
+  inp.style.height = Math.min(inp.scrollHeight, 100) + 'px';
+  document.getElementById('send-btn').disabled = false;
+  hideAc();
+  inp.focus();
+}
+
+function acHighlight(idx) {
+  document.querySelectorAll('#suga-ac li[data-i]').forEach((li, i) => {
+    li.classList.toggle('ac-on', i === idx);
+  });
+}
+
+async function fetchAc(q) {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) { hideAc(); return; }
+  try {
+    const res = await fetch(`/api/suga-search?q=${encodeURIComponent(trimmed)}&limit=8`);
+    if (!res.ok) return;
+    const data = await res.json();
+    showAc(data.items || [], trimmed);
+  } catch(e) { hideAc(); }
+}
+
+// ── Input auto-resize + Enter send + 자동완성 ───────────────────
 const inp = document.getElementById('msg-input');
 inp.addEventListener('input', () => {
   inp.style.height = 'auto';
   inp.style.height = Math.min(inp.scrollHeight, 100) + 'px';
   document.getElementById('send-btn').disabled = !inp.value.trim();
+  // 자동완성 디바운스 150ms
+  clearTimeout(acTimer);
+  acTimer = setTimeout(() => fetchAc(inp.value), 150);
 });
 inp.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  const ac = document.getElementById('suga-ac');
+  const visible = ac.style.display !== 'none' && acItems.length > 0;
+  if (e.key === 'ArrowDown') {
+    if (!visible) return;
+    e.preventDefault();
+    acIdx = Math.min(acIdx + 1, acItems.length - 1);
+    acHighlight(acIdx);
+  } else if (e.key === 'ArrowUp') {
+    if (!visible) return;
+    e.preventDefault();
+    acIdx = Math.max(acIdx - 1, -1);
+    acHighlight(acIdx);
+  } else if (e.key === 'Enter') {
+    if (visible && acIdx >= 0) { e.preventDefault(); selectAc(acIdx); return; }
+    if (!e.shiftKey) { e.preventDefault(); hideAc(); sendMsg(); }
+  } else if (e.key === 'Escape') {
+    hideAc();
+  }
 });
+inp.addEventListener('blur', () => setTimeout(hideAc, 150));
 
 // ── Chip click ──────────────────────────────────────────────────
 document.querySelectorAll('.chip').forEach(c => {

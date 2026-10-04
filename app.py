@@ -22,6 +22,7 @@ if os.path.exists(_env_path):
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hira-default-secret-key-change-me")
+app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7일
 
 SITE_PASSWORD = os.environ.get("SITE_PASSWORD", "hira1234")
 
@@ -653,6 +654,7 @@ def login_page():
     error = None
     if request.method == "POST":
         if request.form.get("password") == SITE_PASSWORD:
+            session.permanent = True
             session["logged_in"] = True
             return redirect(url_for("index"))
         error = "비밀번호가 올바르지 않습니다"
@@ -826,7 +828,7 @@ def chat():
     def generate():
         try:
             with requests.post(f"{OLLAMA_URL}/api/chat",
-                               json=payload, stream=True, timeout=60) as r:
+                               json=payload, stream=True, timeout=(5, 60)) as r:
                 for line in r.iter_lines():
                     if not line:
                         continue
@@ -914,7 +916,7 @@ def suga_chat():
     def generate():
         try:
             with requests.post(f"{OLLAMA_URL}/api/chat",
-                               json=payload, stream=True, timeout=90) as r:
+                               json=payload, stream=True, timeout=(5, 90)) as r:
                 for line in r.iter_lines():
                     if not line:
                         continue
@@ -928,9 +930,9 @@ def suga_chat():
                         pass
                     yield decoded + "\n"
         except requests.exceptions.Timeout:
-            yield json.dumps({"error": "응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.", "done": True}) + "\n"
+            yield json.dumps({"error": f"AI 서버 응답 시간 초과 ({OLLAMA_URL}). 잠시 후 다시 시도해주세요.", "done": True}) + "\n"
         except requests.exceptions.ConnectionError:
-            yield json.dumps({"error": "챗봇 서버에 연결할 수 없습니다.", "done": True}) + "\n"
+            yield json.dumps({"error": f"AI 서버에 연결할 수 없습니다 ({OLLAMA_URL}). 네트워크 또는 서버 상태를 확인해주세요.", "done": True}) + "\n"
         except Exception as e:
             yield json.dumps({"error": str(e), "done": True}) + "\n"
 
