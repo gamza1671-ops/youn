@@ -9,6 +9,7 @@ import threading, pickle, time
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context, session, redirect, url_for
+import pandas as pd
 
 # .env 자동 로드 (python-dotenv 미설치 환경 대응)
 _env_path = os.path.join(os.path.dirname(__file__), ".env")
@@ -453,6 +454,101 @@ def search_mock(item_nm, sido_cd, cl_cd, yadm_nm, gbn_cd, page, num_rows):
     return results[start:start + num_rows], total
 
 
+# ── 수가 데이터 ─────────────────────────────────────────────────
+SUGA_DATA = []   # [{구분, 수가코드, EDICODE, 명칭, 보험단가, ...}, ...]
+
+SUGA_SYSTEM_PROMPT = """당신은 삼성창원병원 보험심사팀의 AI 챗봇 "보험똑똑e"입니다.
+
+## 역할
+1. **수가 조회**: 원내 수가코드(26.9 기준), 보험단가·산재단가·자보단가·일반단가 제공
+2. **보험심사기준**: 수술/처치/치료재료에 대한 심평원 급여·비급여 심사기준 안내
+3. **약제 정보**: KIMS 약제정보 및 심평원 보험인정기준 안내
+
+## 수가 조회 답변
+- 검색 결과가 제공되면 반드시 그 데이터를 기반으로 답변합니다
+- 수가코드·명칭·보험단가·산재단가·자보단가·일반단가를 표 형식으로 정리합니다
+- 동일 명칭이 여러 규격/용량으로 존재하면 항목별로 나열합니다
+- 검색 결과가 없으면 "해당 명칭의 수가코드를 찾을 수 없습니다. 다른 키워드로 검색해 보세요."
+
+## 보험기준 답변
+- 심평원 고시 기준으로 인정상병·투여대상·투여기간·병용제한 항목별 정리
+- "심평원 심사기준 종합서비스(biz.hira.or.kr)"에서 최신 기준 확인 안내
+
+## 약제 답변
+- 효능·용법: KIMS(www.kimsonline.co.kr) 기준
+- 보험인정기준: KIMS [보험인정기준] 탭 고시번호·시행일 포함
+- "KIMS에서 최신 자료를 확인하세요"로 마무리
+
+## 규칙
+- 근거 없는 내용은 지어내지 않습니다
+- 개인정보(환자명·등록번호·진단명)는 요청하거나 언급하지 않습니다
+- 항상 한국어로 답변합니다
+- 답변은 핵심 정보를 포함하되 간결하게 합니다"""
+
+
+def load_suga_data():
+    global SUGA_DATA
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    specs = [
+        ("약제",     "약제(26.9).xlsx",     "약제"),
+        ("치료재료", "치료재료(26.9).xlsx", "치재"),
+        ("행위",     "행위(26.9).xlsx",     "행위"),
+    ]
+    all_data = []
+    for gbn, fname, sheet in specs:
+        path = os.path.join(data_dir, fname)
+        if not os.path.exists(path):
+            print(f"[Suga] 파일 없음: {path}")
+            continue
+        try:
+            df = pd.read_excel(path, sheet_name=sheet, dtype=str)
+            col_map = {}
+            for c in df.columns:
+                if "대분류명" in c:
+                    col_map[c] = "대분류명칭"
+                elif "세부분류" in c:
+                    col_map[c] = "세부분류명칭"
+                else:
+                    col_map[c] = c
+            df = df.rename(columns=col_map)
+            for col in ["보험단가", "보호단가", "산재단가", "자보단가", "일반단가"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+            df["구분"] = gbn
+            all_data.extend(df.to_dict("records"))
+            print(f"[Suga] ✅ {gbn}: {len(df):,}건")
+        except Exception as e:
+            print(f"[Suga] {gbn} 로드 실패: {e}")
+    SUGA_DATA = all_data
+    print(f"[Suga] 총 {len(SUGA_DATA):,}건 로드 완료")
+
+
+def search_suga(keyword: str, gbn: str = None, limit: int = 30) -> list:
+    """수가코드·EDICODE·명칭 대상 포함 검색. 여러 토큰은 OR 합집합."""
+    if not keyword or not SUGA_DATA:
+        return []
+    kw = keyword.strip().lower()
+    tokens = [t for t in kw.split() if len(t) >= 2]
+    if not tokens:
+        tokens = [kw]
+    seen, results = set(), []
+    for item in SUGA_DATA:
+        if gbn and item.get("구분") != gbn:
+            continue
+        nm  = str(item.get("명칭", "")).lower()
+        cd  = str(item.get("수가코드", "")).lower()
+        edi = str(item.get("EDICODE", "")).lower()
+        key = item.get("수가코드", "") + item.get("구분", "")
+        if key in seen:
+            continue
+        if any(t in nm or t in cd or t in edi for t in tokens):
+            seen.add(key)
+            results.append(item)
+        if len(results) >= limit:
+            break
+    return results
+
+
 SYSTEM_PROMPT = """당신은 전국 병원 비급여진료비 조회 서비스의 전문 안내 챗봇입니다.
 
 답변 기준:
@@ -690,6 +786,93 @@ def chat():
                     content_type="application/x-ndjson")
 
 
+@app.route("/suga")
+@login_required
+def suga_page():
+    return render_template("suga.html", chat_model=CHAT_MODEL)
+
+
+@app.route("/api/suga-search")
+@login_required
+def suga_search_api():
+    keyword = request.args.get("q", "").strip()
+    gbn     = request.args.get("gbn", "").strip() or None
+    limit   = min(int(request.args.get("limit", 30)), 100)
+    results = search_suga(keyword, gbn, limit)
+    return jsonify({"count": len(results), "items": results})
+
+
+@app.route("/api/suga-chat", methods=["POST"])
+@login_required
+def suga_chat():
+    body     = request.get_json(force=True)
+    messages = body.get("messages", [])
+    user_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+
+    suga_context = ""
+    if user_msg:
+        results = search_suga(user_msg, limit=20)
+        if results:
+            if len(results) <= 8:
+                lines = []
+                for r in results:
+                    ins = r.get("보험단가", 0)
+                    san = r.get("산재단가", 0)
+                    jab = r.get("자보단가", 0)
+                    gen = r.get("일반단가", 0)
+                    lines.append(
+                        f"- [{r.get('구분','')}] 수가코드:{r.get('수가코드','')} "
+                        f"EDI:{r.get('EDICODE','')} 명칭:{r.get('명칭','')} "
+                        f"보험:{ins:,}원 산재:{san:,}원 자보:{jab:,}원 일반:{gen:,}원 "
+                        f"분류:{r.get('대분류명칭','')}"
+                    )
+                suga_context = "\n\n[수가 DB 검색 결과]\n" + "\n".join(lines)
+            else:
+                names = list(dict.fromkeys(r.get("명칭", "") for r in results[:15]))
+                suga_context = (
+                    f"\n\n[수가 DB 검색 결과: {len(results)}건 — 일부만 표시]\n"
+                    + "\n".join(f"- {n}" for n in names)
+                    + "\n→ 항목이 많습니다. 구체적인 명칭이나 수가코드로 다시 질문해 주세요."
+                )
+
+    sys_content = SUGA_SYSTEM_PROMPT + suga_context
+    full_messages = [{"role": "system", "content": sys_content}] + [
+        m for m in messages if m.get("role") != "system"
+    ]
+
+    payload = {
+        "model":    CHAT_MODEL,
+        "messages": full_messages,
+        "stream":   True,
+        "options":  {"temperature": 0.3},
+    }
+
+    def generate():
+        try:
+            with requests.post(f"{OLLAMA_URL}/api/chat",
+                               json=payload, stream=True, timeout=90) as r:
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    decoded = line.decode("utf-8")
+                    try:
+                        obj = json.loads(decoded)
+                        if "error" in obj:
+                            yield json.dumps({"error": obj["error"], "done": True}) + "\n"
+                            return
+                    except Exception:
+                        pass
+                    yield decoded + "\n"
+        except requests.exceptions.Timeout:
+            yield json.dumps({"error": "응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.", "done": True}) + "\n"
+        except requests.exceptions.ConnectionError:
+            yield json.dumps({"error": "챗봇 서버에 연결할 수 없습니다.", "done": True}) + "\n"
+        except Exception as e:
+            yield json.dumps({"error": str(e), "done": True}) + "\n"
+
+    return Response(stream_with_context(generate()), content_type="application/x-ndjson")
+
+
 @app.route("/api/models")
 @login_required
 def models():
@@ -704,7 +887,9 @@ def models():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    # 전체 캐시 백그라운드 로딩 시작
+    # 수가 데이터 로드 (빠름 — 동기)
+    load_suga_data()
+    # 전체 캐시 백그라운드 로딩
     if API_KEY:
         t = threading.Thread(target=build_cache, daemon=True)
         t.start()

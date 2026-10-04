@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보험똑똑e — 삼성창원병원</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#2563eb;--blue-d:#1d4ed8;--blue-l:#dbeafe;--blue-ll:#eff6ff;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;
+  --gray-400:#94a3b8;--gray-500:#64748b;--gray-600:#475569;--gray-800:#1e293b;
+  --green:#059669;--red:#dc2626;
+  --radius:12px;--shadow:0 2px 16px rgba(0,0,0,.09);
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Apple SD Gothic Neo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#f0f4f8;color:var(--gray-800);font-size:14px;
+     display:flex;flex-direction:column}
+
+/* Header */
+header{background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 55%,#3b82f6 100%);
+       color:#fff;padding:12px 20px;flex-shrink:0}
+.hdr{max-width:900px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.hdr-logo{width:38px;height:38px;background:rgba(255,255,255,.18);border-radius:10px;
+           display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.hdr-text h1{font-size:18px;font-weight:800;letter-spacing:-.5px}
+.hdr-text p{font-size:11px;opacity:.8;margin-top:1px}
+.hdr-back{margin-left:auto;padding:6px 14px;background:rgba(255,255,255,.15);
+          border:1px solid rgba(255,255,255,.3);border-radius:8px;color:#fff;
+          font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;
+          transition:background .2s;white-space:nowrap}
+.hdr-back:hover{background:rgba(255,255,255,.25)}
+
+/* Main */
+main{flex:1;min-height:0;display:flex;flex-direction:column;
+     max-width:900px;width:100%;margin:0 auto;padding:12px 20px;gap:10px}
+
+/* Quick chips */
+.chips-row{display:flex;flex-wrap:wrap;gap:6px;flex-shrink:0}
+.chip{padding:5px 12px;border-radius:20px;border:1.5px solid var(--blue-l);
+      background:var(--blue-ll);color:var(--blue);font-size:11px;font-weight:600;
+      cursor:pointer;transition:all .15s;white-space:nowrap}
+.chip:hover{background:var(--blue-l)}
+
+/* Chat container */
+#chat-box{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+          padding:4px 2px 8px}
+
+/* Bubbles */
+.msg{display:flex;align-items:flex-end;gap:8px;max-width:82%}
+.msg.user{flex-direction:row-reverse;margin-left:auto}
+.msg.bot{flex-direction:row;margin-right:auto}
+.avatar{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;
+        align-items:center;justify-content:center;font-size:15px}
+.msg.user .avatar{background:var(--blue);color:#fff}
+.msg.bot .avatar{background:#fff;box-shadow:var(--shadow)}
+.bubble{padding:10px 14px;border-radius:14px;line-height:1.65;font-size:13px;max-width:100%;word-break:break-word}
+.msg.user .bubble{background:var(--blue);color:#fff;border-bottom-right-radius:4px}
+.msg.bot .bubble{background:#fff;box-shadow:var(--shadow);border-bottom-left-radius:4px;color:var(--gray-800)}
+
+/* Typing indicator */
+.typing-dots{display:flex;gap:4px;padding:4px 2px}
+.typing-dots span{width:7px;height:7px;border-radius:50%;background:var(--gray-400);
+                  animation:bounce .9s infinite ease-in-out}
+.typing-dots span:nth-child(2){animation-delay:.15s}
+.typing-dots span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-7px)}}
+
+/* Markdown inside bubble */
+.bubble h3{font-size:13px;font-weight:700;margin-bottom:4px;margin-top:8px;color:var(--blue-d)}
+.bubble h3:first-child{margin-top:0}
+.bubble p{margin-bottom:6px}
+.bubble p:last-child{margin-bottom:0}
+.bubble ul,.bubble ol{padding-left:16px;margin-bottom:6px}
+.bubble li{margin-bottom:2px}
+.bubble strong{font-weight:700}
+.bubble em{font-style:italic;color:var(--gray-500)}
+.bubble a{color:var(--blue);text-decoration:none}
+.bubble code{background:var(--gray-100);padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px}
+.bubble pre{background:var(--gray-800);color:#86efac;padding:10px 12px;border-radius:8px;
+            font-size:11px;overflow-x:auto;margin:6px 0}
+.bubble pre code{background:none;padding:0;color:inherit}
+.bubble hr{border:none;border-top:1px solid var(--gray-200);margin:8px 0}
+
+/* 수가 결과 테이블 */
+.suga-table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}
+.suga-table th{background:var(--blue-ll);color:var(--blue-d);font-weight:700;
+               padding:5px 8px;border:1px solid var(--blue-l);text-align:center;white-space:nowrap}
+.suga-table td{padding:5px 8px;border:1px solid var(--gray-200);vertical-align:middle}
+.suga-table td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:monospace;font-size:10px}
+.suga-table tr:hover td{background:var(--gray-50)}
+.suga-badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700}
+.badge-약제{background:#fef3c7;color:#92400e}
+.badge-행위{background:#d1fae5;color:#065f46}
+.badge-치료재료{background:#ede9fe;color:#5b21b6}
+
+/* Error bubble */
+.bubble-error{color:var(--red);font-weight:600}
+
+/* Input area */
+.input-area{background:#fff;border-radius:14px;box-shadow:var(--shadow);
+            padding:10px 12px;display:flex;gap:8px;align-items:flex-end;flex-shrink:0}
+#msg-input{flex:1;border:none;outline:none;font-size:13px;color:var(--gray-800);
+           resize:none;max-height:100px;min-height:24px;line-height:1.5;
+           font-family:inherit;background:transparent}
+#msg-input::placeholder{color:var(--gray-400)}
+#send-btn{width:36px;height:36px;border-radius:10px;background:var(--blue);border:none;
+          color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;
+          justify-content:center;transition:background .2s}
+#send-btn:hover:not(:disabled){background:var(--blue-d)}
+#send-btn:disabled{background:var(--gray-200);cursor:not-allowed}
+#send-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.5;
+              stroke-linecap:round;stroke-linejoin:round}
+
+/* Welcome card */
+.welcome{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:16px 20px;flex-shrink:0}
+.welcome h2{font-size:15px;font-weight:700;color:var(--blue-d);margin-bottom:4px}
+.welcome p{font-size:12px;color:var(--gray-500);line-height:1.6}
+.welcome-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.welcome-item{background:var(--blue-ll);border:1px solid var(--blue-l);border-radius:10px;
+              padding:10px 12px;cursor:pointer;transition:all .15s}
+.welcome-item:hover{background:var(--blue-l)}
+.welcome-item .wi-icon{font-size:20px;margin-bottom:4px}
+.welcome-item .wi-title{font-size:11px;font-weight:700;color:var(--blue-d)}
+.welcome-item .wi-desc{font-size:10px;color:var(--gray-500);margin-top:2px;line-height:1.4}
+@media(max-width:600px){.welcome-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr">
+    <div class="hdr-logo">💡</div>
+    <div class="hdr-text">
+      <h1>보험똑똑e</h1>
+      <p>삼성창원병원 보험심사팀 AI 어시스턴트</p>
+    </div>
+    <a href="/" class="hdr-back">← 비급여 조회</a>
+  </div>
+</header>
+
+<main>
+  <!-- 빠른 질문 chips -->
+  <div class="chips-row" id="chips-row">
+    <span class="chip" data-q="CT 수가코드 알려줘">🔍 CT 수가</span>
+    <span class="chip" data-q="MRI 보험 인정기준">📋 MRI 보험기준</span>
+    <span class="chip" data-q="도수치료 급여 인정기준">🦴 도수치료 기준</span>
+    <span class="chip" data-q="아스피린 보험인정기준">💊 아스피린 인정기준</span>
+    <span class="chip" data-q="인공관절 치료재료 수가">🦿 인공관절 수가</span>
+    <span class="chip" data-q="초음파 수가코드와 보험단가">🔊 초음파 수가</span>
+  </div>
+
+  <!-- 채팅 영역 -->
+  <div id="chat-box">
+    <!-- 웰컴 카드 -->
+    <div class="welcome" id="welcome-card">
+      <h2>안녕하세요! 보험똑똑e입니다 👋</h2>
+      <p>수가코드 조회, 보험심사기준, 약제 KIMS 정보를 빠르게 안내해 드립니다.<br>아래 항목을 선택하거나 직접 질문해 주세요.</p>
+      <div class="welcome-grid">
+        <div class="welcome-item" onclick="ask('수가조회 어떻게 해?')">
+          <div class="wi-icon">🔢</div>
+          <div class="wi-title">수가 조회</div>
+          <div class="wi-desc">행위·약제·치료재료 수가코드 및 단가 확인</div>
+        </div>
+        <div class="welcome-item" onclick="ask('보험심사기준 어디서 확인해?')">
+          <div class="wi-icon">📑</div>
+          <div class="wi-title">보험심사기준</div>
+          <div class="wi-desc">심평원 급여 인정기준·고시 안내</div>
+        </div>
+        <div class="welcome-item" onclick="ask('KIMS 약제정보 어떻게 찾아?')">
+          <div class="wi-icon">💊</div>
+          <div class="wi-title">약제 정보</div>
+          <div class="wi-desc">KIMS 효능·용법·보험인정기준</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 입력창 -->
+  <div class="input-area">
+    <textarea id="msg-input" placeholder="수가코드, 약제명, 보험기준 등 자유롭게 질문하세요..." rows="1"></textarea>
+    <button id="send-btn" onclick="sendMsg()" disabled>
+      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</main>
+
+<script>
+const CHAT_MODEL = "{{ chat_model }}";
+let chatHistory = [];
+let isStreaming = false;
+
+// ── Markdown renderer ────────────────────────────────────────────
+function renderMd(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```[\w]*\n([\s\S]*?)```/g,'<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g,'<em>$1</em>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^# (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^---$/gm,'<hr>')
+    .replace(/^\s*[-•]\s+(.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s,'<ul>$1</ul>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>')
+    .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')
+    .replace(/^(?!<[hupol]|<pre|<hr)/,'<p>').replace(/(?<![>])$/,'</p>')
+    .replace(/<p><\/p>/g,'').replace(/<p>(<[hupol])/g,'$1').replace(/(<\/[hupol][i>]>)<\/p>/g,'$1');
+}
+
+// ── Suga table renderer ──────────────────────────────────────────
+function renderSugaTable(items) {
+  const badge = g => {
+    const cls = {약제:'badge-약제',행위:'badge-행위',치료재료:'badge-치료재료'}[g]||'';
+    return `<span class="suga-badge ${cls}">${g}</span>`;
+  };
+  const fmt = n => Number(n).toLocaleString('ko-KR');
+  let html = `<table class="suga-table">
+<thead><tr><th>구분</th><th>수가코드</th><th>EDI코드</th><th>명칭</th>
+<th>보험단가</th><th>산재단가</th><th>자보단가</th><th>일반단가</th></tr></thead><tbody>`;
+  for (const r of items) {
+    html += `<tr><td>${badge(r.구분||'')}</td>
+<td><code>${r.수가코드||''}</code></td>
+<td style="font-size:10px">${r.EDICODE||''}</td>
+<td>${r.명칭||''}</td>
+<td class="num">${fmt(r.보험단가||0)}</td>
+<td class="num">${fmt(r.산재단가||0)}</td>
+<td class="num">${fmt(r.자보단가||0)}</td>
+<td class="num">${fmt(r.일반단가||0)}</td></tr>`;
+  }
+  return html + '</tbody></table>';
+}
+
+// ── DOM helpers ─────────────────────────────────────────────────
+function appendMsg(role, html, raw) {
+  const box = document.getElementById('chat-box');
+  const wc = document.getElementById('welcome-card');
+  if (wc) wc.remove();
+
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="avatar">${isUser ? '👤' : '💡'}</div>
+    <div class="bubble">${html}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div.querySelector('.bubble');
+}
+
+function showTyping() {
+  const box = document.getElementById('chat-box');
+  const wc = document.getElementById('welcome-card');
+  if (wc) wc.remove();
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  div.id = 'typing-indicator';
+  div.innerHTML = `<div class="avatar">💡</div>
+    <div class="bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+// ── Send message ────────────────────────────────────────────────
+function ask(text) {
+  const inp = document.getElementById('msg-input');
+  inp.value = text;
+  sendMsg();
+}
+
+async function sendMsg() {
+  if (isStreaming) return;
+  const inp = document.getElementById('msg-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = ''; inp.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  isStreaming = true;
+
+  appendMsg('user', renderMd(text));
+  chatHistory.push({role:'user', content: text});
+  showTyping();
+
+  let fullText = '', hasError = false, bubble = null;
+
+  try {
+    const res = await fetch('/api/suga-chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({messages: chatHistory})
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    removeTyping();
+    bubble = appendMsg('bot', '<span style="opacity:.4">…</span>');
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const d = JSON.parse(line);
+          if (d.error) {
+            hasError = true;
+            bubble.innerHTML = `<span class="bubble-error">⚠️ ${d.error}</span>`;
+            break;
+          }
+          if (d.message?.content) fullText += d.message.content;
+          if (!hasError) bubble.innerHTML = renderMd(fullText) || '<span style="opacity:.4">…</span>';
+          if (d.done && !hasError) {
+            bubble.innerHTML = renderMd(fullText);
+            chatHistory.push({role:'assistant', content: fullText});
+          }
+        } catch(e) {}
+      }
+      if (hasError) break;
+    }
+  } catch(e) {
+    removeTyping();
+    if (!bubble) bubble = appendMsg('bot', '');
+    bubble.innerHTML = `<span class="bubble-error">⚠️ 연결 오류: ${e.message}</span>`;
+    hasError = true;
+  }
+
+  isStreaming = false;
+  document.getElementById('send-btn').disabled = false;
+  inp.focus();
+}
+
+// ── Input auto-resize + Enter send ──────────────────────────────
+const inp = document.getElementById('msg-input');
+inp.addEventListener('input', () => {
+  inp.style.height = 'auto';
+  inp.style.height = Math.min(inp.scrollHeight, 100) + 'px';
+  document.getElementById('send-btn').disabled = !inp.value.trim();
+});
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+});
+
+// ── Chip click ──────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => ask(c.dataset.q));
+});
+</script>
+</body>
+</html>
