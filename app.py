@@ -39,8 +39,10 @@ def login_required(f):
 API_KEY    = os.environ.get("HIRA_API_KEY", "")
 BASE_URL   = "https://apis.data.go.kr/B551182/nonPaymentDamtInfoService"
 OPERATION  = "getNonPaymentItemHospDtlList"
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://121.138.151.6:11500")
-CHAT_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:14b-instruct-q4_K_M")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:7b")
+MFDS_API_KEY = os.environ.get("MFDS_API_KEY", "")
+MFDS_DRUG_URL = "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
 
 # ── 전체 데이터 캐시 ─────────────────────────────────────────────
 CACHE_FILE   = os.path.join(os.path.dirname(__file__), "cache.pkl")
@@ -476,9 +478,10 @@ SUGA_SYSTEM_PROMPT = """당신은 삼성창원병원 보험심사팀의 AI 챗�
 - "심평원 심사기준 종합서비스(biz.hira.or.kr)"에서 최신 기준 확인 안내
 
 ## 약제 답변
-- 효능·용법: KIMS(www.kimsonline.co.kr) 기준
-- 보험인정기준: KIMS [보험인정기준] 탭 고시번호·시행일 포함
-- "KIMS에서 최신 자료를 확인하세요"로 마무리
+- 식약처 의약품 정보가 [식약처 의약품 정보] 섹션에 제공된 경우 반드시 해당 데이터를 먼저 기반으로 답변합니다
+- 효능효과·용법용량·주의사항을 항목별로 정리합니다
+- 심평원 보험인정기준은 biz.hira.or.kr 에서 확인하도록 안내합니다
+- 식약처 데이터가 없으면 KIMS(www.kimsonline.co.kr) 확인을 안내합니다
 
 ## 규칙
 - 근거 없는 내용은 지어내지 않습니다
@@ -612,6 +615,53 @@ def search_suga(keyword: str, gbn: str = None, limit: int = 30) -> list:
     # 위치 기준 오름차순 정렬 후 limit 적용
     results.sort(key=lambda x: x[0])
     return [x[1] for x in results[:limit]]
+
+
+def search_mfds_drug(keyword: str, limit: int = 5) -> list:
+    """식약처 e-약은요 API로 의약품 효능·용법·주의사항 조회.
+    keyword를 순차적으로 축약하며 결과가 나올 때까지 시도.
+    """
+    if not MFDS_API_KEY or not keyword:
+        return []
+    import urllib.parse, re
+
+    # 검색 후보: 원본 → 첫 한글 단어 → 첫 2글자 한글
+    candidates = [keyword.strip()]
+    m = re.match(r'^([가-힣]+)', keyword.strip())
+    if m:
+        base = m.group(1)
+        if base not in candidates:
+            candidates.append(base)
+        if len(base) > 4:
+            candidates.append(base[:4])
+
+    for q in candidates:
+        if len(q) < 2:
+            continue
+        params = urllib.parse.urlencode({
+            "serviceKey": MFDS_API_KEY,
+            "itemName": q,
+            "pageNo": "1",
+            "numOfRows": str(limit),
+            "type": "json",
+        })
+        try:
+            resp = requests.get(f"{MFDS_DRUG_URL}?{params}", timeout=8)
+            data = resp.json()
+            items = data.get("body", {}).get("items", [])
+            if not isinstance(items, list):
+                items = [items] if items else []
+            if not items:
+                continue
+            return [{
+                "약품명":   it.get("itemName", ""),
+                "효능효과": it.get("efcyQesitm", ""),
+                "용법용량": it.get("useMethodQesitm", ""),
+                "주의사항": it.get("atpnQesitm", ""),
+            } for it in items]
+        except Exception:
+            continue
+    return []
 
 
 SYSTEM_PROMPT = """당신은 전국 병원 비급여진료비 조회 서비스의 전문 안내 챗봇입니다.
@@ -876,7 +926,9 @@ def suga_chat():
     user_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
 
     suga_context = ""
+    drug_context = ""
     if user_msg:
+        # 수가 DB 검색
         results = search_suga(user_msg, limit=20)
         if results:
             if len(results) <= 8:
@@ -901,7 +953,33 @@ def suga_chat():
                     + "\n→ 항목이 많습니다. 구체적인 명칭이나 수가코드로 다시 질문해 주세요."
                 )
 
-    sys_content = SUGA_SYSTEM_PROMPT + suga_context
+        # 약제 질문이면 식약처 API 추가 조회
+        drug_keywords = ["인정기준", "급여기준", "보험기준", "효능", "효과", "용법", "용량",
+                         "주의사항", "부작용", "금기", "적응증", "약제", "약품"]
+        is_drug_query = any(kw in user_msg for kw in drug_keywords) or (
+            results and any(r.get("구분") == "약제" for r in results[:3])
+        )
+        if is_drug_query:
+            # 수가 결과 약품명 → 원문 순서로 MFDS 검색 시도
+            drug_candidates = []
+            if results:
+                drug_candidates.append(results[0].get("명칭", ""))
+            drug_candidates.append(user_msg)
+            mfds_results = []
+            for cand in drug_candidates:
+                mfds_results = search_mfds_drug(cand, limit=3)
+                if mfds_results:
+                    break
+            if mfds_results:
+                lines = []
+                for d in mfds_results:
+                    lines.append(f"\n[약품명] {d['약품명']}")
+                    if d["효능효과"]: lines.append(f"[효능효과] {d['효능효과']}")
+                    if d["용법용량"]: lines.append(f"[용법용량] {d['용법용량']}")
+                    if d["주의사항"]: lines.append(f"[주의사항] {d['주의사항']}")
+                drug_context = "\n\n[식약처 의약품 정보]\n" + "\n".join(lines)
+
+    sys_content = SUGA_SYSTEM_PROMPT + suga_context + drug_context
     full_messages = [{"role": "system", "content": sys_content}] + [
         m for m in messages if m.get("role") != "system"
     ]
