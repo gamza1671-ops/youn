@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보험인정기준 관리 — 보험똑똑e</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo',sans-serif;background:#f5f7fa;color:#222;min-height:100vh}
+header{background:#1e3a8a;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:12px}
+header h1{font-size:1.1rem;font-weight:600}
+header a{color:#93c5fd;font-size:.85rem;text-decoration:none;margin-left:auto}
+.container{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;grid-template-columns:340px 1fr;gap:20px}
+.panel{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+.panel-header{padding:14px 16px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:8px}
+.panel-header h2{font-size:.95rem;font-weight:600;color:#1e3a8a;flex:1}
+.list-wrap{max-height:calc(100vh - 160px);overflow-y:auto}
+.item-row{padding:12px 16px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .15s}
+.item-row:hover,.item-row.active{background:#eff6ff}
+.item-row .cat{display:inline-block;font-size:.7rem;padding:2px 6px;border-radius:4px;margin-bottom:4px;font-weight:500}
+.cat-약제{background:#dbeafe;color:#1e40af}
+.cat-행위{background:#d1fae5;color:#065f46}
+.cat-치료재료{background:#fef9c3;color:#92400e}
+.item-row .title{font-size:.88rem;font-weight:500;color:#111}
+.item-row .ref{font-size:.75rem;color:#6b7280;margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:4px;padding:6px 14px;border:none;border-radius:7px;font-size:.82rem;font-weight:500;cursor:pointer;transition:background .15s}
+.btn-primary{background:#1e3a8a;color:#fff}.btn-primary:hover{background:#1e40af}
+.btn-danger{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}.btn-danger:hover{background:#fee2e2}
+.btn-secondary{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb}.btn-secondary:hover{background:#e5e7eb}
+form{padding:20px}
+label{display:block;font-size:.8rem;font-weight:500;color:#374151;margin-bottom:4px}
+input,textarea,select{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;font-family:inherit;margin-bottom:12px;transition:border .15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+textarea{min-height:220px;resize:vertical}
+.tags-input{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;min-height:40px;margin-bottom:12px;cursor:text;align-items:center}
+.tags-input:focus-within{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+.tag{background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 7px;font-size:.78rem;display:flex;align-items:center;gap:3px}
+.tag span{cursor:pointer;color:#3b82f6;font-weight:700}
+.tags-input input{border:none;outline:none;padding:2px 4px;font-size:.82rem;flex:1;min-width:80px;background:transparent}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.toast{position:fixed;bottom:24px;right:24px;background:#1e3a8a;color:#fff;padding:10px 18px;border-radius:9px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+.toast.show{opacity:1}
+.empty{padding:32px 16px;text-align:center;color:#9ca3af;font-size:.88rem}
+#search-inp{margin:10px 12px;padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:.83rem;width:calc(100% - 24px);background:#f9fafb}
+#search-inp:focus{outline:none;border-color:#3b82f6}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ 보험인정기준 관리</h1>
+  <a href="/suga">← 챗봇으로 돌아가기</a>
+</header>
+<div class="container">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>기준 목록</h2>
+      <button class="btn btn-primary" onclick="newItem()">+ 추가</button>
+    </div>
+    <input id="search-inp" placeholder="검색..." oninput="filterList(this.value)">
+    <div class="list-wrap" id="list-wrap"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <h2 id="form-title">항목 선택</h2>
+      <div id="form-actions" style="display:none;gap:8px;display:none">
+        <button class="btn btn-danger" onclick="deleteItem()">삭제</button>
+        <button class="btn btn-secondary" onclick="cancelEdit()">취소</button>
+        <button class="btn btn-primary" onclick="saveItem()">저장</button>
+      </div>
+    </div>
+    <form id="criteria-form" style="display:none" onsubmit="return false">
+      <input type="hidden" id="f-id-orig">
+      <label>ID (영문, 고유값)</label>
+      <input id="f-id" placeholder="예: 비모보-나프록센에소메프라졸" required>
+      <label>제목</label>
+      <input id="f-title" placeholder="예: 비모보정 급여 인정기준" required>
+      <div class="form-row">
+        <div>
+          <label>분류</label>
+          <select id="f-category">
+            <option value="">선택</option>
+            <option value="약제">약제</option>
+            <option value="행위">행위</option>
+            <option value="치료재료">치료재료</option>
+          </select>
+        </div>
+        <div>
+          <label>시행일</label>
+          <input id="f-date" type="date">
+        </div>
+      </div>
+      <label>고시번호</label>
+      <input id="f-ref" placeholder="예: 보건복지부 고시 제2019-198호">
+      <label>검색 키워드 (Enter로 추가)</label>
+      <div class="tags-input" id="tags-wrap" onclick="document.getElementById('tags-inp').focus()">
+        <input id="tags-inp" placeholder="키워드 입력 후 Enter" onkeydown="addTag(event)">
+      </div>
+      <label>급여인정기준 내용</label>
+      <textarea id="f-content" placeholder="급여인정기준 상세 내용을 입력하세요."></textarea>
+    </form>
+    <div id="placeholder" style="padding:48px 24px;text-align:center;color:#9ca3af">
+      <div style="font-size:2rem;margin-bottom:8px">📋</div>
+      <div>목록에서 항목을 선택하거나<br>새 항목을 추가하세요</div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let allItems = [];
+let tags = [];
+let editingId = null;
+
+async function loadList() {
+  const r = await fetch('/api/criteria');
+  allItems = await r.json();
+  renderList(allItems);
+}
+
+function renderList(items) {
+  const wrap = document.getElementById('list-wrap');
+  if (!items.length) { wrap.innerHTML = '<div class="empty">항목 없음</div>'; return; }
+  wrap.innerHTML = items.map(it => `
+    <div class="item-row ${editingId === it.id ? 'active' : ''}" onclick="selectItem('${esc(it.id)}')">
+      <div><span class="cat cat-${esc(it.category||'')}">${esc(it.category||'기타')}</span></div>
+      <div class="title">${esc(it.title)}</div>
+      <div class="ref">${esc(it.ref||'')} ${esc(it.date||'')}</div>
+    </div>
+  `).join('');
+}
+
+function filterList(q) {
+  const kw = q.trim().toLowerCase();
+  if (!kw) { renderList(allItems); return; }
+  renderList(allItems.filter(it =>
+    (it.title||'').toLowerCase().includes(kw) ||
+    (it.keywords||[]).some(k => k.toLowerCase().includes(kw)) ||
+    (it.id||'').toLowerCase().includes(kw)
+  ));
+}
+
+function selectItem(id) {
+  const item = allItems.find(x => x.id === id);
+  if (!item) return;
+  editingId = id;
+  showForm(item);
+  renderList(filterList_cur());
+}
+
+function filterList_cur() {
+  return allItems;
+}
+
+function showForm(item) {
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('criteria-form').style.display = 'block';
+  document.getElementById('form-actions').style.display = 'flex';
+  document.getElementById('form-title').textContent = item ? item.title : '새 항목';
+  document.getElementById('f-id-orig').value = item ? item.id : '';
+  document.getElementById('f-id').value = item ? item.id : '';
+  document.getElementById('f-title').value = item ? item.title : '';
+  document.getElementById('f-category').value = item ? (item.category||'') : '';
+  document.getElementById('f-date').value = item ? (item.date||'') : '';
+  document.getElementById('f-ref').value = item ? (item.ref||'') : '';
+  document.getElementById('f-content').value = item ? (item.content||'') : '';
+  tags = item ? [...(item.keywords||[])] : [];
+  renderTags();
+}
+
+function newItem() {
+  editingId = null;
+  showForm(null);
+  renderList(allItems);
+}
+
+function cancelEdit() {
+  editingId = null;
+  document.getElementById('criteria-form').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'block';
+  document.getElementById('form-actions').style.display = 'none';
+  renderList(allItems);
+}
+
+function renderTags() {
+  const wrap = document.getElementById('tags-wrap');
+  const inp = document.getElementById('tags-inp');
+  wrap.querySelectorAll('.tag').forEach(e => e.remove());
+  tags.forEach((t, i) => {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.innerHTML = `${esc(t)} <span onclick="removeTag(${i})">×</span>`;
+    wrap.insertBefore(el, inp);
+  });
+}
+
+function addTag(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const v = e.target.value.trim();
+    if (v && !tags.includes(v)) { tags.push(v); renderTags(); }
+    e.target.value = '';
+  }
+}
+
+function removeTag(i) { tags.splice(i, 1); renderTags(); }
+
+async function saveItem() {
+  const origId = document.getElementById('f-id-orig').value;
+  const payload = {
+    id: document.getElementById('f-id').value.trim(),
+    title: document.getElementById('f-title').value.trim(),
+    category: document.getElementById('f-category').value,
+    date: document.getElementById('f-date').value,
+    ref: document.getElementById('f-ref').value.trim(),
+    keywords: tags,
+    content: document.getElementById('f-content').value,
+  };
+  if (!payload.id || !payload.title) { showToast('⚠️ ID와 제목은 필수입니다'); return; }
+  const isNew = !origId;
+  const url = isNew ? '/api/criteria' : `/api/criteria/${origId}`;
+  const method = isNew ? 'POST' : 'PUT';
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const res = await r.json();
+  if (res.ok || r.status === 201) {
+    showToast('✅ 저장됐습니다');
+    editingId = payload.id;
+    await loadList();
+    selectItem(payload.id);
+  } else {
+    showToast('⚠️ ' + (res.error||'저장 실패'));
+  }
+}
+
+async function deleteItem() {
+  const origId = document.getElementById('f-id-orig').value;
+  if (!origId) return;
+  if (!confirm(`"${origId}" 항목을 삭제할까요?`)) return;
+  const r = await fetch(`/api/criteria/${origId}`, { method: 'DELETE' });
+  const res = await r.json();
+  if (res.ok) {
+    showToast('🗑️ 삭제됐습니다');
+    cancelEdit();
+    await loadList();
+  } else {
+    showToast('⚠️ ' + (res.error||'삭제 실패'));
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function esc(s) {
+  return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadList();
+</script>
+</body>
+</html>

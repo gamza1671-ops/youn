@@ -679,6 +679,48 @@ def search_mfds_drug(keyword: str, limit: int = 5) -> list:
     return []
 
 
+# ── 로컬 급여기준 DB ─────────────────────────────────────────────
+_CRITERIA_PATH = os.path.join(os.path.dirname(__file__), "data", "criteria.json")
+_LOCAL_CRITERIA: list = []
+
+def _load_local_criteria():
+    global _LOCAL_CRITERIA
+    try:
+        if os.path.exists(_CRITERIA_PATH):
+            with open(_CRITERIA_PATH, encoding="utf-8") as f:
+                _LOCAL_CRITERIA = json.load(f)
+    except Exception:
+        _LOCAL_CRITERIA = []
+
+def _save_local_criteria():
+    with open(_CRITERIA_PATH, "w", encoding="utf-8") as f:
+        json.dump(_LOCAL_CRITERIA, f, ensure_ascii=False, indent=2)
+
+def search_local_criteria(keyword: str, limit: int = 3) -> list:
+    if not keyword or len(keyword.strip()) < 2:
+        return []
+    kw = keyword.strip().lower()
+    scored = []
+    for item in _LOCAL_CRITERIA:
+        score = 0
+        # 키워드 배열 직접 매칭
+        for k in item.get("keywords", []):
+            if kw in k.lower() or k.lower() in kw:
+                score += 10
+        # title 포함
+        if kw in item.get("title", "").lower():
+            score += 5
+        # content 포함
+        if kw in item.get("content", "").lower():
+            score += 2
+        if score > 0:
+            scored.append((score, item))
+    scored.sort(key=lambda x: -x[0])
+    return [x[1] for x in scored[:limit]]
+
+_load_local_criteria()
+
+# ── 심평원 스크래핑 ────────────────────────────────────────────────
 HIRA_CRITERIA_SEARCH_URL = "https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrList.do?pgmid=HIRAA030069000410&isFavorite=0"
 HIRA_CRITERIA_POPUP_URL  = "https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do"
 HIRA_CRITERIA_HEADERS = {
@@ -1050,7 +1092,7 @@ def suga_chat():
                     + "\n→ 항목이 많습니다. 구체적인 명칭이나 수가코드로 다시 질문해 주세요."
                 )
 
-        # 보험인정기준 질문 → 심평원 실시간 검색
+        # 보험인정기준 질문 → ① 로컬 DB → ② 심평원 실시간 검색
         criteria_keywords = ["인정기준", "급여기준", "보험기준", "심사기준", "고시", "급여인정",
                              "인정상병", "급여적용", "보험적용", "급여조건", "급여범위"]
         is_criteria_query = any(kw in user_msg for kw in criteria_keywords)
@@ -1064,21 +1106,43 @@ def suga_chat():
                 crit_candidates.append(nm0)
                 m0 = _re.match(r'^([가-힣A-Za-z]+)', nm0)
                 if m0: crit_candidates.append(m0.group(1))
+                # 약제 성분명 추출
+                paren = _re.findall(r'[（(]([가-힣A-Za-z+·/ ]+)[）)]', nm0)
+                for p in paren:
+                    for comp in _re.split(r'[+·/]', p):
+                        if len(comp.strip()) >= 2: crit_candidates.append(comp.strip())
             _tokens = user_msg.split()
             _clean = [t for t in _tokens if not any(s in t for s in _stopwords)]
             if _clean: crit_candidates.append(" ".join(_clean[:2]).strip())
-            crit_results = []
+            crit_candidates.append(user_msg)
+
+            # ① 로컬 DB 우선 검색
+            local_results = []
             for crit_kw in dict.fromkeys(c for c in crit_candidates if c and len(c) >= 2):
-                crit_results = search_hira_criteria(crit_kw, limit=3)
-                if crit_results:
+                local_results = search_local_criteria(crit_kw, limit=2)
+                if local_results:
                     break
-            if crit_results:
+            if local_results:
                 lines = []
-                for c in crit_results:
+                for c in local_results:
                     lines.append(f"\n[제목] {c['title']} ({c['ref']}, {c['date']})")
                     if c["content"]:
-                        lines.append(c["content"][:800])
-                criteria_context = "\n\n[심평원 보험인정기준 (실시간)]\n" + "\n".join(lines)
+                        lines.append(c["content"][:1000])
+                criteria_context = "\n\n[보험인정기준 (원내 DB)]\n" + "\n".join(lines)
+            else:
+                # ② 로컬 DB에 없으면 심평원 실시간 스크래핑
+                crit_results = []
+                for crit_kw in dict.fromkeys(c for c in crit_candidates if c and len(c) >= 2):
+                    crit_results = search_hira_criteria(crit_kw, limit=3)
+                    if crit_results:
+                        break
+                if crit_results:
+                    lines = []
+                    for c in crit_results:
+                        lines.append(f"\n[제목] {c['title']} ({c['ref']}, {c['date']})")
+                        if c["content"]:
+                            lines.append(c["content"][:800])
+                    criteria_context = "\n\n[심평원 보험인정기준 (실시간)]\n" + "\n".join(lines)
 
         # 약제 질문이면 식약처 API 추가 조회
         drug_keywords = ["효능", "효과", "용법", "용량", "주의사항", "부작용", "금기", "적응증",
@@ -1204,6 +1268,75 @@ def models():
         return jsonify({"models": names, "current": CHAT_MODEL})
     except Exception as e:
         return jsonify({"models": [], "error": str(e)})
+
+
+# ── 급여기준 관리 API ────────────────────────────────────────────
+@app.route("/api/criteria", methods=["GET"])
+@login_required
+def api_criteria_list():
+    q = request.args.get("q", "").strip().lower()
+    if q:
+        items = search_local_criteria(q, limit=20)
+    else:
+        items = _LOCAL_CRITERIA
+    return jsonify(items)
+
+@app.route("/api/criteria/<item_id>", methods=["GET"])
+@login_required
+def api_criteria_get(item_id):
+    for item in _LOCAL_CRITERIA:
+        if item.get("id") == item_id:
+            return jsonify(item)
+    return jsonify({"error": "not found"}), 404
+
+@app.route("/api/criteria", methods=["POST"])
+@login_required
+def api_criteria_create():
+    data = request.get_json()
+    if not data or not data.get("id") or not data.get("title"):
+        return jsonify({"error": "id·title 필수"}), 400
+    for item in _LOCAL_CRITERIA:
+        if item.get("id") == data["id"]:
+            return jsonify({"error": "중복 id"}), 409
+    import datetime
+    data.setdefault("keywords", [])
+    data.setdefault("content", "")
+    data.setdefault("category", "")
+    data.setdefault("ref", "")
+    data.setdefault("date", "")
+    data["updated"] = datetime.date.today().isoformat()
+    _LOCAL_CRITERIA.append(data)
+    _save_local_criteria()
+    return jsonify({"ok": True, "id": data["id"]}), 201
+
+@app.route("/api/criteria/<item_id>", methods=["PUT"])
+@login_required
+def api_criteria_update(item_id):
+    data = request.get_json()
+    import datetime
+    for i, item in enumerate(_LOCAL_CRITERIA):
+        if item.get("id") == item_id:
+            _LOCAL_CRITERIA[i].update(data)
+            _LOCAL_CRITERIA[i]["updated"] = datetime.date.today().isoformat()
+            _save_local_criteria()
+            return jsonify({"ok": True})
+    return jsonify({"error": "not found"}), 404
+
+@app.route("/api/criteria/<item_id>", methods=["DELETE"])
+@login_required
+def api_criteria_delete(item_id):
+    global _LOCAL_CRITERIA
+    before = len(_LOCAL_CRITERIA)
+    _LOCAL_CRITERIA = [x for x in _LOCAL_CRITERIA if x.get("id") != item_id]
+    if len(_LOCAL_CRITERIA) == before:
+        return jsonify({"error": "not found"}), 404
+    _save_local_criteria()
+    return jsonify({"ok": True})
+
+@app.route("/admin/criteria")
+@login_required
+def admin_criteria():
+    return render_template("admin_criteria.html")
 
 
 if __name__ == "__main__":
