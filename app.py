@@ -1087,8 +1087,13 @@ def suga_chat():
     suga_context = ""
     drug_context = ""
     if user_msg:
-        # 수가 DB 검색
-        results = search_suga(user_msg, limit=20)
+        # 수가코드 패턴 우선 추출 (예: "C3360 수가금액" → "C3360")
+        import re as _re_code
+        _code_m = _re_code.search(r'\b([A-Za-z][A-Za-z0-9]{3,})\b', user_msg)
+        _search_kw = _code_m.group(1) if _code_m else user_msg
+        results = search_suga(_search_kw, limit=20)
+        if not results and _code_m:  # 코드로 못 찾으면 전체 문장 재시도
+            results = search_suga(user_msg, limit=20)
         if results:
             # 금액 키워드 또는 코드 패턴이면 결과 수 상관없이 단가 포함
             price_keywords = ["금액", "단가", "얼마", "가격", "수가", "비용", "원"]
