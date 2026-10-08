@@ -488,8 +488,9 @@ SUGA_SYSTEM_PROMPT = """당신은 삼성창원병원 보험심사팀의 AI 챗�
 - 검색 결과가 없으면 "해당 명칭의 수가코드를 찾을 수 없습니다. 다른 키워드로 검색해 보세요."
 
 ## 보험기준 답변
-- 심평원 고시 기준으로 인정상병·투여대상·투여기간·병용제한 항목별 정리
-- "심평원 심사기준 종합서비스(biz.hira.or.kr)"에서 최신 기준 확인 안내
+- [심평원 보험인정기준 (실시간)] 섹션이 제공된 경우 반드시 해당 고시 내용을 기반으로 답변합니다
+- 고시번호·시행일을 명시하고 인정상병·투여대상·투여기간·병용제한 항목별로 정리합니다
+- 심평원 데이터가 없으면 "심평원 보험인정기준(www.hira.or.kr)에서 확인하세요"라고 안내합니다
 
 ## 약제 답변
 - 식약처 의약품 정보가 [식약처 의약품 정보] 섹션에 제공된 경우 반드시 해당 데이터를 먼저 기반으로 답변합니다
@@ -676,6 +677,88 @@ def search_mfds_drug(keyword: str, limit: int = 5) -> list:
         except Exception:
             continue
     return []
+
+
+HIRA_CRITERIA_SEARCH_URL = "https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrList.do?pgmid=HIRAA030069000410&isFavorite=0"
+HIRA_CRITERIA_POPUP_URL  = "https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do"
+HIRA_CRITERIA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer":    "https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrList.do",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+}
+
+def search_hira_criteria(keyword: str, limit: int = 3) -> list:
+    """심평원 보험인정기준 검색 (실시간 스크래핑).
+    Returns list of {title, ref, date, content}
+    """
+    import re, urllib.parse
+    if not keyword or len(keyword.strip()) < 2:
+        return []
+    try:
+        data = urllib.parse.urlencode({
+            "tabGbn": "01",
+            "searchCondition": "TXTALL",
+            "searchWord": keyword.strip(),
+            "pageIndex": "1",
+            "recordCountPerPage": str(max(limit, 5)),
+            "decIteTpCd": "01",
+            "seqListYn": "N",
+            "searchYn": "Y",
+        })
+        resp = requests.post(HIRA_CRITERIA_SEARCH_URL, data=data,
+                             headers=HIRA_CRITERIA_HEADERS, timeout=8)
+        html = resp.text
+
+        # viewInsuAdtCrtr(no, mtgHmeDd, sno, mtgMtrRegSno, RN)
+        params_list = re.findall(
+            r'viewInsuAdtCrtr\(\d+,\s*[\'\"]([\d]+)[\'\"],\s*[\'\"]([\d]+)[\'\"],\s*[\'\"]([\d]+)[\'\"],[^)]*\)',
+            html
+        )
+        titles = re.findall(r'viewInsuAdtCrtr\([^)]+\)[^>]*>([^<]{5,})', html)
+
+        results = []
+        for i, (dt, sno, reg) in enumerate(params_list[:limit]):
+            title = titles[i].strip() if i < len(titles) else ""
+            if not title:
+                continue
+            # 팝업 본문 가져오기
+            try:
+                popup_params = f"mtgHmeDd={dt}&sno={sno}&mtgMtrRegSno={reg}"
+                pr = requests.get(f"{HIRA_CRITERIA_POPUP_URL}?{popup_params}",
+                                  headers={"User-Agent": HIRA_CRITERIA_HEADERS["User-Agent"]},
+                                  timeout=8)
+                popup_html = pr.text
+                # 스크립트·스타일 제거 후 텍스트 추출
+                popup_html = re.sub(r'<script[^>]*>.*?</script>', '', popup_html, flags=re.DOTALL)
+                popup_html = re.sub(r'<style[^>]*>.*?</style>', '', popup_html, flags=re.DOTALL)
+                popup_html = re.sub(r'<[^>]+>', ' ', popup_html)
+                popup_html = re.sub(r'[ \t]+', ' ', popup_html)
+                lines = [l.strip() for l in popup_html.splitlines()
+                         if l.strip() and len(l.strip()) > 5]
+                # 헤더/푸터 제거: 실제 본문만 추출
+                content_lines = []
+                in_content = False
+                for line in lines:
+                    if any(k in line for k in ['고시 신설', '고시 개정', '고시 삭제', '■', '▶', '◆']):
+                        in_content = True
+                    if in_content:
+                        content_lines.append(line)
+                    elif '게시일' in line or '관련근거' in line:
+                        content_lines.append(line)
+                content = "\n".join(content_lines[:40]) if content_lines else "\n".join(lines[5:30])
+
+                # ref 번호 추출
+                ref_m = re.search(r'고시\s*제([\d\-]+호[^\s]*)', popup_html[:500])
+                ref = f"고시 제{ref_m.group(1)}" if ref_m else f"고시 {dt[:4]}-{dt[4:6]}-{dt[6:]}"
+
+                results.append({"title": title, "ref": ref, "date": f"{dt[:4]}-{dt[4:6]}-{dt[6:]}", "content": content})
+            except Exception:
+                results.append({"title": title, "ref": "", "date": "", "content": ""})
+        return results
+    except Exception:
+        return []
 
 
 SYSTEM_PROMPT = """당신은 전국 병원 비급여진료비 조회 서비스의 전문 안내 챗봇입니다.
@@ -967,14 +1050,36 @@ def suga_chat():
                     + "\n→ 항목이 많습니다. 구체적인 명칭이나 수가코드로 다시 질문해 주세요."
                 )
 
+        # 보험인정기준 질문 → 심평원 실시간 검색
+        criteria_keywords = ["인정기준", "급여기준", "보험기준", "심사기준", "고시", "급여인정",
+                             "인정상병", "급여적용", "보험적용", "급여조건", "급여범위"]
+        is_criteria_query = any(kw in user_msg for kw in criteria_keywords)
+        criteria_context = ""
+        if is_criteria_query:
+            # 검색 키워드 추출: 수가결과 명칭 우선 → 없으면 불용어 제거 후 첫 2단어
+            if results:
+                crit_kw = results[0].get("명칭", "")
+            else:
+                import re as _re
+                _stopwords = criteria_keywords + ["알려줘", "알려주세요", "보여줘", "설명해줘", "뭐야", "어떻게", "언제", "누가", "무엇"]
+                _tokens = user_msg.split()
+                _clean = [t for t in _tokens if not any(s in t for s in _stopwords)]
+                crit_kw = " ".join(_clean[:3]).strip() or user_msg[:20]
+            crit_results = search_hira_criteria(crit_kw, limit=3)
+            if crit_results:
+                lines = []
+                for c in crit_results:
+                    lines.append(f"\n[제목] {c['title']} ({c['ref']}, {c['date']})")
+                    if c["content"]:
+                        lines.append(c["content"][:800])
+                criteria_context = "\n\n[심평원 보험인정기준 (실시간)]\n" + "\n".join(lines)
+
         # 약제 질문이면 식약처 API 추가 조회
-        drug_keywords = ["인정기준", "급여기준", "보험기준", "효능", "효과", "용법", "용량",
-                         "주의사항", "부작용", "금기", "적응증", "약제", "약품"]
+        drug_keywords = ["효능", "효과", "용법", "용량", "주의사항", "부작용", "금기", "적응증", "약제", "약품"]
         is_drug_query = any(kw in user_msg for kw in drug_keywords) or (
             results and any(r.get("구분") == "약제" for r in results[:3])
         )
         if is_drug_query:
-            # 수가 결과 약품명 → 원문 순서로 MFDS 검색 시도
             drug_candidates = []
             if results:
                 drug_candidates.append(results[0].get("명칭", ""))
@@ -993,7 +1098,7 @@ def suga_chat():
                     if d["주의사항"]: lines.append(f"[주의사항] {d['주의사항']}")
                 drug_context = "\n\n[식약처 의약품 정보]\n" + "\n".join(lines)
 
-    sys_content = SUGA_SYSTEM_PROMPT + suga_context + drug_context
+    sys_content = SUGA_SYSTEM_PROMPT + suga_context + criteria_context + drug_context
     full_messages = [{"role": "system", "content": sys_content}] + [
         m for m in messages if m.get("role") != "system"
     ]
@@ -1001,8 +1106,21 @@ def suga_chat():
     def generate():
         try:
             if _AI_SERVER_TYPE == "custom":
-                # 커스텀 서버(spark-f4ce): question + context → SSE data: {"token": "..."}
-                pay = {"question": user_msg, "context": sys_content}
+                # 커스텀 서버는 context 필드를 무시할 수 있으므로 question에 직접 포함
+                question_with_ctx = user_msg
+                if criteria_context:
+                    question_with_ctx = (
+                        criteria_context.strip()
+                        + "\n\n위 심평원 보험인정기준을 반드시 참고하여 다음 질문에 답해주세요:\n"
+                        + user_msg
+                    )
+                elif suga_context:
+                    question_with_ctx = (
+                        suga_context.strip()
+                        + "\n\n위 수가 정보를 참고하여 다음 질문에 답해주세요:\n"
+                        + user_msg
+                    )
+                pay = {"question": question_with_ctx, "context": sys_content}
                 with requests.post(f"{OLLAMA_URL}/api/chat",
                                    json=pay, stream=True, timeout=(5, 90)) as r:
                     for line in r.iter_lines():
