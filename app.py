@@ -44,6 +44,20 @@ CHAT_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:7b")
 MFDS_API_KEY = os.environ.get("MFDS_API_KEY", "")
 MFDS_DRUG_URL = "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
 
+# AI 서버 타입: "ollama"(표준) | "custom"(spark-f4ce SSE)
+_AI_SERVER_TYPE = "ollama"
+
+def _detect_ai_server():
+    global _AI_SERVER_TYPE
+    try:
+        r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        data = r.json()
+        _AI_SERVER_TYPE = "custom" if isinstance(data, dict) and "detail" in data else "ollama"
+    except Exception:
+        _AI_SERVER_TYPE = "ollama"
+
+threading.Thread(target=_detect_ai_server, daemon=True).start()
+
 # ── 전체 데이터 캐시 ─────────────────────────────────────────────
 CACHE_FILE   = os.path.join(os.path.dirname(__file__), "cache.pkl")
 CACHE_MAX_AGE = 24 * 3600   # 24시간마다 갱신
@@ -984,29 +998,54 @@ def suga_chat():
         m for m in messages if m.get("role") != "system"
     ]
 
-    payload = {
-        "model":    CHAT_MODEL,
-        "messages": full_messages,
-        "stream":   True,
-        "options":  {"temperature": 0.3},
-    }
-
     def generate():
         try:
-            with requests.post(f"{OLLAMA_URL}/api/chat",
-                               json=payload, stream=True, timeout=(5, 90)) as r:
-                for line in r.iter_lines():
-                    if not line:
-                        continue
-                    decoded = line.decode("utf-8")
-                    try:
-                        obj = json.loads(decoded)
-                        if "error" in obj:
-                            yield json.dumps({"error": obj["error"], "done": True}) + "\n"
-                            return
-                    except Exception:
-                        pass
-                    yield decoded + "\n"
+            if _AI_SERVER_TYPE == "custom":
+                # 커스텀 서버(spark-f4ce): question + context → SSE data: {"token": "..."}
+                pay = {"question": user_msg, "context": sys_content}
+                with requests.post(f"{OLLAMA_URL}/api/chat",
+                                   json=pay, stream=True, timeout=(5, 90)) as r:
+                    for line in r.iter_lines():
+                        if not line:
+                            continue
+                        decoded = line.decode("utf-8")
+                        if decoded.startswith("data: "):
+                            decoded = decoded[6:]
+                        try:
+                            obj = json.loads(decoded)
+                            if "error" in obj:
+                                yield json.dumps({"error": obj["error"], "done": True}) + "\n"
+                                return
+                            if "token" in obj:
+                                yield json.dumps({"message": {"content": obj["token"]}, "done": False}) + "\n"
+                            if obj.get("done") or obj.get("status") == "done":
+                                yield json.dumps({"done": True}) + "\n"
+                                return
+                        except Exception:
+                            pass
+                    yield json.dumps({"done": True}) + "\n"
+            else:
+                # 표준 Ollama: messages 배열 → NDJSON
+                pay = {
+                    "model":    CHAT_MODEL,
+                    "messages": full_messages,
+                    "stream":   True,
+                    "options":  {"temperature": 0.3},
+                }
+                with requests.post(f"{OLLAMA_URL}/api/chat",
+                                   json=pay, stream=True, timeout=(5, 90)) as r:
+                    for line in r.iter_lines():
+                        if not line:
+                            continue
+                        decoded = line.decode("utf-8")
+                        try:
+                            obj = json.loads(decoded)
+                            if "error" in obj:
+                                yield json.dumps({"error": obj["error"], "done": True}) + "\n"
+                                return
+                        except Exception:
+                            pass
+                        yield decoded + "\n"
         except requests.exceptions.Timeout:
             yield json.dumps({"error": f"AI 서버 응답 시간 초과 ({OLLAMA_URL}). 잠시 후 다시 시도해주세요.", "done": True}) + "\n"
         except requests.exceptions.ConnectionError:
