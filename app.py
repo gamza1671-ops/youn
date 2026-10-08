@@ -1159,6 +1159,7 @@ def suga_chat():
 
     suga_context = ""
     drug_context = ""
+    criteria_context = ""
     if user_msg:
         # 수가코드 패턴 우선 추출 (예: "C3360 수가금액" → "C3360")
         import re as _re_code
@@ -1208,21 +1209,23 @@ def suga_chat():
         criteria_keywords = ["인정기준", "급여기준", "보험기준", "심사기준", "고시", "급여인정",
                              "인정상병", "급여적용", "보험적용", "급여조건", "급여범위"]
         is_criteria_query = any(kw in user_msg for kw in criteria_keywords)
-        criteria_context = ""
         if is_criteria_query:
             import re as _re
             _stopwords = criteria_keywords + ["알려줘", "알려주세요", "보여줘", "설명해줘", "뭐야", "어떻게", "언제", "누가", "무엇"]
             crit_candidates = []
             if results:
+                res_gbn = results[0].get("구분", "")
                 nm0 = results[0].get("명칭", "")
-                crit_candidates.append(nm0)
-                m0 = _re.match(r'^([가-힣A-Za-z]+)', nm0)
-                if m0: crit_candidates.append(m0.group(1))
-                # 약제 성분명 추출
-                paren = _re.findall(r'[（(]([가-힣A-Za-z+·/ ]+)[）)]', nm0)
-                for p in paren:
-                    for comp in _re.split(r'[+·/]', p):
-                        if len(comp.strip()) >= 2: crit_candidates.append(comp.strip())
+                # 약제일 때만 명칭/성분명을 criteria 검색어로 사용
+                # 행위·치료재료 명칭은 약제 인정기준과 내용이 겹쳐 오탐이 생김
+                if res_gbn == "약제":
+                    crit_candidates.append(nm0)
+                    m0 = _re.match(r'^([가-힣A-Za-z]+)', nm0)
+                    if m0: crit_candidates.append(m0.group(1))
+                    paren = _re.findall(r'[（(]([가-힣A-Za-z+·/ ]+)[）)]', nm0)
+                    for p in paren:
+                        for comp in _re.split(r'[+·/]', p):
+                            if len(comp.strip()) >= 2: crit_candidates.append(comp.strip())
             _tokens = user_msg.split()
             _clean = [t for t in _tokens if not any(s in t for s in _stopwords)]
             if _clean: crit_candidates.append(" ".join(_clean[:2]).strip())
