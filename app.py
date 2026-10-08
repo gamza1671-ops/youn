@@ -23,6 +23,8 @@ if os.path.exists(_env_path):
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hira-default-secret-key-change-me")
 app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 7  # 7일
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"       # CSRF 방지
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 
 SITE_PASSWORD = os.environ.get("SITE_PASSWORD", "hira1234")
 
@@ -33,6 +35,21 @@ def login_required(f):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "unauthorized"}), 401
             return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    """관리 기능(급여기준 CRUD)용 — 로그인 + JSON 바디 요청만 허용."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return jsonify({"error": "unauthorized"}), 401
+        # CSRF 이중 방어: Content-Type 또는 X-Requested-With 헤더 필수
+        ct = request.content_type or ""
+        xhr = request.headers.get("X-Requested-With", "")
+        if request.method in ("POST", "PUT", "DELETE"):
+            if "application/json" not in ct and xhr != "XMLHttpRequest":
+                return jsonify({"error": "forbidden"}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -1290,7 +1307,7 @@ def api_criteria_get(item_id):
     return jsonify({"error": "not found"}), 404
 
 @app.route("/api/criteria", methods=["POST"])
-@login_required
+@admin_required
 def api_criteria_create():
     data = request.get_json()
     if not data or not data.get("id") or not data.get("title"):
@@ -1310,7 +1327,7 @@ def api_criteria_create():
     return jsonify({"ok": True, "id": data["id"]}), 201
 
 @app.route("/api/criteria/<item_id>", methods=["PUT"])
-@login_required
+@admin_required
 def api_criteria_update(item_id):
     data = request.get_json()
     import datetime
@@ -1323,7 +1340,7 @@ def api_criteria_update(item_id):
     return jsonify({"error": "not found"}), 404
 
 @app.route("/api/criteria/<item_id>", methods=["DELETE"])
-@login_required
+@admin_required
 def api_criteria_delete(item_id):
     global _LOCAL_CRITERIA
     before = len(_LOCAL_CRITERIA)
