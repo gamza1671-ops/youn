@@ -499,10 +499,11 @@ SUGA_SYSTEM_PROMPT = """당신은 삼성창원병원 보험심사팀의 AI 챗�
 3. **약제 정보**: KIMS 약제정보 및 심평원 보험인정기준 안내
 
 ## 수가 조회 답변
-- 검색 결과가 제공되면 반드시 그 데이터를 기반으로 답변합니다
+- [수가 DB 검색 결과] 섹션이 제공되면 반드시 그 데이터만 사용합니다 — 다른 수가를 만들어 내지 않습니다
+- 헤더에 '검색어: xxx' 형태로 원본 검색어가 명시된 경우, 해당 결과가 그 검색어에 해당하는 항목임을 전제로 답변합니다
 - 수가코드·명칭·보험단가·산재단가·자보단가·일반단가를 표 형식으로 정리합니다
 - 동일 명칭이 여러 규격/용량으로 존재하면 항목별로 나열합니다
-- 검색 결과가 없으면 "해당 명칭의 수가코드를 찾을 수 없습니다. 다른 키워드로 검색해 보세요."
+- 검색 결과가 없으면 "해당 명칭의 수가코드를 찾을 수 없습니다. 다른 키워드로 검색해 보세요."라고만 안내합니다 — 수가를 임의로 생성하지 않습니다
 
 ## 수가금액 답변
 - [수가 DB 검색 결과] 섹션이 제공되면 반드시 그 금액 데이터만 사용합니다
@@ -566,6 +567,59 @@ def load_suga_data():
     SUGA_DATA = all_data
     print(f"[Suga] 총 {len(SUGA_DATA):,}건 로드 완료")
 
+
+# 한글 의학용어 → 영문 동의어 (치료재료 영문명 데이터 검색용)
+# 값은 단일 정확 키워드 우선 정렬 (복합어보다 단어 하나가 정확도 높음)
+_KO_SYNONYM: dict[str, list[str]] = {
+    "유치도뇨관": ["foley"],
+    "폴리도뇨관": ["foley"],
+    "폴리카테터": ["foley"],
+    "단순도뇨관": ["nelaton"],
+    "넬라톤": ["nelaton"],
+    "도뇨": ["foley", "nelaton"],
+    "흡인카테터": ["suction"],
+    "흡인관": ["suction"],
+    "흡인기": ["suction"],
+    "중심정맥관": ["cvc", "central venous"],
+    "중심정맥카테터": ["cvc", "central venous"],
+    "비위관": ["nasogastric", "levin"],
+    "엘튜브": ["levin", "nasogastric"],
+    "수혈세트": ["transfusion"],
+    "수혈라인": ["transfusion"],
+    "수액세트": ["infusion set"],
+    "수액라인": ["infusion"],
+    "산소마스크": ["oxygen mask"],
+    "산소카뉼라": ["nasal cannula"],
+    "비강카뉼라": ["nasal cannula"],
+    "기관내관": ["endotracheal"],
+    "기도삽관튜브": ["endotracheal"],
+    "기관삽관": ["endotracheal"],
+    "봉합사": ["suture"],
+    "주사기": ["syringe"],
+    "주사침": ["needle"],
+    "채혈침": ["lancet"],
+    "거즈": ["gauze"],
+    "반창고": ["adhesive"],
+    "배액관": ["drain"],
+    "흉관": ["chest tube"],
+    "복강경": ["laparoscope"],
+    "드레인": ["drain"],
+    "드레싱": ["dressing"],
+    "밴드": ["bandage"],
+    "척추바늘": ["spinal needle"],
+    "경막외카테터": ["epidural"],
+    "도뇨관": ["foley", "catheter"],
+    "카테터": ["catheter"],
+    "튜브": ["tube"],
+    "스텐트": ["stent"],
+    "밸브": ["valve"],
+    "클립": ["clip"],
+    "글러브": ["glove"],
+    "장갑": ["glove"],
+    "실리콘": ["silicone"],
+    "풍선": ["balloon"],
+    "확장기": ["dilator"],
+}
 
 _KO_STOP = {
     # 수가 관련 일반명사
@@ -649,7 +703,26 @@ def search_suga(keyword: str, gbn: str = None, limit: int = 30) -> list:
 
     # 위치 기준 오름차순 정렬 후 limit 적용
     results.sort(key=lambda x: x[0])
-    return [x[1] for x in results[:limit]]
+    hits = [x[1] for x in results[:limit]]
+
+    # 한글 검색 0건이면 동의어 영문으로 재검색
+    if not hits and any(_is_korean(t) for t in tokens):
+        for t in tokens:
+            if t in _KO_SYNONYM:
+                for en_kw in _KO_SYNONYM[t]:
+                    hits = search_suga(en_kw, gbn=gbn, limit=limit)
+                    if hits:
+                        return hits
+        # 동의어 없으면 개별 한글 토큰이 포함된 동의어 중 부분 매칭도 시도
+        for t in tokens:
+            for ko_key, en_list in _KO_SYNONYM.items():
+                if t in ko_key or ko_key in t:
+                    for en_kw in en_list:
+                        hits = search_suga(en_kw, gbn=gbn, limit=limit)
+                        if hits:
+                            return hits
+
+    return hits
 
 
 def search_mfds_drug(keyword: str, limit: int = 5) -> list:
@@ -1104,6 +1177,8 @@ def suga_chat():
                 or is_code_query
                 or len(results) <= 15
             )
+            # 헤더에 원본 검색어 포함 (동의어 검색 결과임을 LLM이 인식하도록)
+            _orig_label = _search_kw if _search_kw == user_msg else f"'{user_msg}' (검색어: {_search_kw})"
             if show_price:
                 lines = []
                 for r in results[:15]:
@@ -1116,14 +1191,15 @@ def suga_chat():
                         f"명칭:{r.get('명칭','')} "
                         f"보험:{ins:,}원 산재:{san:,}원 자보:{jab:,}원 일반:{gen:,}원"
                     )
-                header = f"[수가 DB 검색 결과 ({len(results)}건)]" if len(results) > 15 else "[수가 DB 검색 결과]"
+                cnt_label = f" ({len(results)}건)" if len(results) > 15 else ""
+                header = f"[수가 DB 검색 결과{cnt_label} — {_orig_label}]"
                 suga_context = f"\n\n{header}\n" + "\n".join(lines)
                 if len(results) > 15:
                     suga_context += f"\n→ {len(results)}건 중 15건만 표시. 더 구체적인 코드·명칭으로 검색하세요."
             else:
                 names = list(dict.fromkeys(r.get("명칭", "") for r in results[:15]))
                 suga_context = (
-                    f"\n\n[수가 DB 검색 결과: {len(results)}건 — 일부만 표시]\n"
+                    f"\n\n[수가 DB 검색 결과: {len(results)}건 — {_orig_label}]\n"
                     + "\n".join(f"- {n}" for n in names)
                     + "\n→ 항목이 많습니다. 구체적인 명칭이나 수가코드로 다시 질문해 주세요."
                 )
