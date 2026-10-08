@@ -488,18 +488,18 @@ SUGA_SYSTEM_PROMPT = """당신은 삼성창원병원 보험심사팀의 AI 챗�
 - 검색 결과가 없으면 "해당 명칭의 수가코드를 찾을 수 없습니다. 다른 키워드로 검색해 보세요."
 
 ## 보험기준 답변
-- [심평원 보험인정기준 (실시간)] 섹션이 제공된 경우 반드시 해당 고시 내용을 기반으로 답변합니다
-- 고시번호·시행일을 명시하고 인정상병·투여대상·투여기간·병용제한 항목별로 정리합니다
-- 심평원 데이터가 없으면 "심평원 보험인정기준(www.hira.or.kr)에서 확인하세요"라고 안내합니다
+- [심평원 보험인정기준 (실시간)] 섹션이 제공된 경우 반드시 해당 고시 내용을 기반으로 답변하고, 고시번호·시행일을 명시합니다
+- 실시간 데이터가 없으면: 효능·적응증·일반적인 급여 조건을 설명하되, 고시번호·시행일 등 구체적 행정정보는 절대 지어내지 않습니다
+- 반드시 "정확한 최신 기준은 심평원(www.hira.or.kr)에서 확인하세요"를 추가합니다
 
 ## 약제 답변
-- 식약처 의약품 정보가 [식약처 의약품 정보] 섹션에 제공된 경우 반드시 해당 데이터를 먼저 기반으로 답변합니다
-- 효능효과·용법용량·주의사항을 항목별로 정리합니다
-- 심평원 보험인정기준은 biz.hira.or.kr 에서 확인하도록 안내합니다
-- 식약처 데이터가 없으면 KIMS(www.kimsonline.co.kr) 확인을 안내합니다
+- [식약처 의약품 정보] 섹션이 제공된 경우 해당 데이터를 기반으로 효능효과·용법용량·주의사항을 정리합니다
+- 식약처 데이터가 없으면 해당 약제의 성분·효능·일반적 급여 조건을 설명하되, 구체적 행정 수치는 지어내지 않습니다
+- 반드시 "상세 정보는 KIMS(www.kimsonline.co.kr) 또는 심평원에서 확인하세요"를 추가합니다
 
 ## 규칙
-- 근거 없는 내용은 지어내지 않습니다
+- 제공된 수가 DB 및 실시간 데이터를 최우선으로 활용합니다
+- 고시번호·시행일·구체적 수치 등 검증 불가한 행정 정보는 절대 만들어 내지 않습니다
 - 개인정보(환자명·등록번호·진단명)는 요청하거나 언급하지 않습니다
 - 항상 한국어로 답변합니다
 - 답변은 핵심 정보를 포함하되 간결하게 합니다"""
@@ -1056,16 +1056,22 @@ def suga_chat():
         is_criteria_query = any(kw in user_msg for kw in criteria_keywords)
         criteria_context = ""
         if is_criteria_query:
-            # 검색 키워드 추출: 수가결과 명칭 우선 → 없으면 불용어 제거 후 첫 2단어
+            import re as _re
+            _stopwords = criteria_keywords + ["알려줘", "알려주세요", "보여줘", "설명해줘", "뭐야", "어떻게", "언제", "누가", "무엇"]
+            crit_candidates = []
             if results:
-                crit_kw = results[0].get("명칭", "")
-            else:
-                import re as _re
-                _stopwords = criteria_keywords + ["알려줘", "알려주세요", "보여줘", "설명해줘", "뭐야", "어떻게", "언제", "누가", "무엇"]
-                _tokens = user_msg.split()
-                _clean = [t for t in _tokens if not any(s in t for s in _stopwords)]
-                crit_kw = " ".join(_clean[:3]).strip() or user_msg[:20]
-            crit_results = search_hira_criteria(crit_kw, limit=3)
+                nm0 = results[0].get("명칭", "")
+                crit_candidates.append(nm0)
+                m0 = _re.match(r'^([가-힣A-Za-z]+)', nm0)
+                if m0: crit_candidates.append(m0.group(1))
+            _tokens = user_msg.split()
+            _clean = [t for t in _tokens if not any(s in t for s in _stopwords)]
+            if _clean: crit_candidates.append(" ".join(_clean[:2]).strip())
+            crit_results = []
+            for crit_kw in dict.fromkeys(c for c in crit_candidates if c and len(c) >= 2):
+                crit_results = search_hira_criteria(crit_kw, limit=3)
+                if crit_results:
+                    break
             if crit_results:
                 lines = []
                 for c in crit_results:
@@ -1075,17 +1081,31 @@ def suga_chat():
                 criteria_context = "\n\n[심평원 보험인정기준 (실시간)]\n" + "\n".join(lines)
 
         # 약제 질문이면 식약처 API 추가 조회
-        drug_keywords = ["효능", "효과", "용법", "용량", "주의사항", "부작용", "금기", "적응증", "약제", "약품"]
+        drug_keywords = ["효능", "효과", "용법", "용량", "주의사항", "부작용", "금기", "적응증",
+                         "약제", "약품", "인정기준", "보험기준", "급여기준"]
         is_drug_query = any(kw in user_msg for kw in drug_keywords) or (
             results and any(r.get("구분") == "약제" for r in results[:3])
         )
         if is_drug_query:
+            import re as _re
             drug_candidates = []
             if results:
-                drug_candidates.append(results[0].get("명칭", ""))
+                nm = results[0].get("명칭", "")
+                drug_candidates.append(nm)
+                # 괄호 안 성분명 추출: "비모보정500/20mg(나프록센+에소메프라졸)" → 나프록센
+                paren = _re.findall(r'[（(]([가-힣A-Za-z+·/ ]+)[）)]', nm)
+                for p in paren:
+                    for comp in _re.split(r'[+·/]', p):
+                        comp = comp.strip()
+                        if len(comp) >= 2:
+                            drug_candidates.append(comp)
+                # 첫 한글 단어만
+                m0 = _re.match(r'^([가-힣]+)', nm)
+                if m0:
+                    drug_candidates.append(m0.group(1))
             drug_candidates.append(user_msg)
             mfds_results = []
-            for cand in drug_candidates:
+            for cand in dict.fromkeys(drug_candidates):  # 중복 제거
                 mfds_results = search_mfds_drug(cand, limit=3)
                 if mfds_results:
                     break
