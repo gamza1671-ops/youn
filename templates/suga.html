@@ -104,6 +104,26 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;
 /* Error bubble */
 .bubble-error{color:var(--red);font-weight:600}
 
+/* Cichl 스타일 보험인정기준 카드 */
+.cichl-verdict{display:inline-block;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:800;
+               margin-bottom:8px;letter-spacing:-.3px}
+.cichl-verdict.green{background:#d1fae5;color:#065f46;border:1.5px solid #6ee7b7}
+.cichl-verdict.yellow{background:#fef3c7;color:#92400e;border:1.5px solid #fcd34d}
+.cichl-verdict.red{background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5}
+.cichl-verdict.gray{background:#e2e8f0;color:#475569;border:1.5px solid #cbd5e1}
+.cichl-section{font-size:13px;font-weight:800;color:#1d4ed8;padding:8px 0 4px;
+               border-bottom:2px solid #dbeafe;margin:10px 0 6px;display:block}
+.cichl-section:first-child{margin-top:4px}
+.cichl-box{border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px}
+.cichl-box.ref{background:#f1f5f9;border-left:4px solid #64748b}
+.cichl-box.check{background:#fffbeb;border-left:4px solid #f59e0b}
+.cichl-box.docs{background:#eff6ff;border-left:4px solid #3b82f6}
+.cichl-box-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+                 margin-bottom:6px;opacity:.7}
+.cichl-box.ref .cichl-box-title{color:#475569}
+.cichl-box.check .cichl-box-title{color:#92400e}
+.cichl-box.docs .cichl-box-title{color:#1d4ed8}
+
 /* Input area */
 .input-wrap{position:relative;flex-shrink:0}
 .input-area{background:#fff;border-radius:14px;box-shadow:var(--shadow);
@@ -267,8 +287,42 @@ let chatHistory = [];
 let isStreaming = false;
 
 // ── Markdown renderer ────────────────────────────────────────────
+function cichlVerdict(label) {
+  const l = label.trim();
+  if (l.includes('선별급여') || l.includes('조건부')) return `<span class="cichl-verdict yellow">⚡ ${l}</span>`;
+  if (l.includes('비급여')) return `<span class="cichl-verdict red">✕ ${l}</span>`;
+  if (l.includes('급여')) return `<span class="cichl-verdict green">✓ ${l}</span>`;
+  return `<span class="cichl-verdict gray">${l}</span>`;
+}
+
 function renderMd(text) {
-  return text
+  // 1단계: 【...】 Cichl 섹션 마커 처리 (HTML 이스케이프 전)
+  const placeholder = (key, val) => `\x00cichl_${key}_${encodeURIComponent(val)}\x00`;
+  let t = text
+    // 급여 판정 (줄 전체)
+    .replace(/^【(급여 인정[^】]*)】\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^【(선별급여[^】]*)】\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^【(비급여[^】]*)】\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^【(조건부 급여[^】]*)】\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^【(급여 인정기준[^】]*)】\s*$/gm, (_, m) => placeholder('verdict', m))
+    // Cichl 박스 헤더 (줄 전체)
+    .replace(/^【(참조 고시[^】]*)】\s*$/gm, (_, m) => placeholder('ref', m))
+    .replace(/^【(추가로 확인할 정보[^】]*)】\s*$/gm, (_, m) => placeholder('check', m))
+    .replace(/^【(필요 서류[^】]*)】\s*$/gm, (_, m) => placeholder('docs', m))
+    // Ⅰ/Ⅱ/Ⅲ 섹션 헤더
+    .replace(/^【([ⅠⅡⅢ][^】]*)】\s*$/gm, (_, m) => placeholder('section', m))
+    .replace(/^【([^】]+)】\s*$/gm, (_, m) => placeholder('section', m))
+    // LLM 마크다운 형식: **[급여 인정]**
+    .replace(/^\*\*\[([^\]]*급여[^\]]*)\]\*\*\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^\*\*\[(비급여[^\]]*)\]\*\*\s*$/gm, (_, m) => placeholder('verdict', m))
+    // LLM 섹션 헤더: **Ⅰ. ...**
+    .replace(/^\*\*([ⅠⅡⅢ]\.[^*]+)\*\*\s*$/gm, (_, m) => placeholder('section', m))
+    .replace(/^\*\*(참조 고시[^*]*)\*\*\s*$/gm, (_, m) => placeholder('ref', m))
+    .replace(/^\*\*(추가로 확인할 정보[^*]*)\*\*\s*$/gm, (_, m) => placeholder('check', m))
+    .replace(/^\*\*(필요 서류[^*]*)\*\*\s*$/gm, (_, m) => placeholder('docs', m));
+
+  // 2단계: 일반 마크다운 → HTML
+  let html = t
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/```[\w]*\n([\s\S]*?)```/g,'<pre><code>$1</code></pre>')
     .replace(/`([^`]+)`/g,'<code>$1</code>')
@@ -284,6 +338,16 @@ function renderMd(text) {
     .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')
     .replace(/^(?!<[hupol]|<pre|<hr)/,'<p>').replace(/(?<![>])$/,'</p>')
     .replace(/<p><\/p>/g,'').replace(/<p>(<[hupol])/g,'$1').replace(/(<\/[hupol][i>]>)<\/p>/g,'$1');
+
+  // 3단계: 플레이스홀더 → Cichl HTML (이스케이프 영향 없음)
+  html = html
+    .replace(/\x00cichl_verdict_([^\x00]+)\x00/g, (_, enc) => cichlVerdict(decodeURIComponent(enc)))
+    .replace(/\x00cichl_section_([^\x00]+)\x00/g, (_, enc) => `<span class="cichl-section">${decodeURIComponent(enc)}</span>`)
+    .replace(/\x00cichl_ref_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box ref"><div class="cichl-box-title">📋 ${decodeURIComponent(enc)}</div>`)
+    .replace(/\x00cichl_check_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box check"><div class="cichl-box-title">💡 ${decodeURIComponent(enc)}</div>`)
+    .replace(/\x00cichl_docs_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box docs"><div class="cichl-box-title">📄 ${decodeURIComponent(enc)}</div>`);
+
+  return html;
 }
 
 // ── Suga table renderer ──────────────────────────────────────────
