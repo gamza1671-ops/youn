@@ -287,8 +287,10 @@ let chatHistory = [];
 let isStreaming = false;
 
 // ── Markdown renderer ────────────────────────────────────────────
+const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
 function cichlVerdict(label) {
-  const l = label.trim();
+  const l = escHtml(label.trim());
   if (l.includes('선별급여') || l.includes('조건부')) return `<span class="cichl-verdict yellow">⚡ ${l}</span>`;
   if (l.includes('비급여')) return `<span class="cichl-verdict red">✕ ${l}</span>`;
   if (l.includes('급여')) return `<span class="cichl-verdict green">✓ ${l}</span>`;
@@ -339,13 +341,14 @@ function renderMd(text) {
     .replace(/^(?!<[hupol]|<pre|<hr)/,'<p>').replace(/(?<![>])$/,'</p>')
     .replace(/<p><\/p>/g,'').replace(/<p>(<[hupol])/g,'$1').replace(/(<\/[hupol][i>]>)<\/p>/g,'$1');
 
-  // 3단계: 플레이스홀더 → Cichl HTML (이스케이프 영향 없음)
+  // 3단계: 플레이스홀더 → Cichl HTML (escHtml 적용으로 XSS 방지)
+  const safe = enc => escHtml(decodeURIComponent(enc));
   html = html
     .replace(/\x00cichl_verdict_([^\x00]+)\x00/g, (_, enc) => cichlVerdict(decodeURIComponent(enc)))
-    .replace(/\x00cichl_section_([^\x00]+)\x00/g, (_, enc) => `<span class="cichl-section">${decodeURIComponent(enc)}</span>`)
-    .replace(/\x00cichl_ref_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box ref"><div class="cichl-box-title">📋 ${decodeURIComponent(enc)}</div>`)
-    .replace(/\x00cichl_check_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box check"><div class="cichl-box-title">💡 ${decodeURIComponent(enc)}</div>`)
-    .replace(/\x00cichl_docs_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box docs"><div class="cichl-box-title">📄 ${decodeURIComponent(enc)}</div>`);
+    .replace(/\x00cichl_section_([^\x00]+)\x00/g, (_, enc) => `<span class="cichl-section">${safe(enc)}</span>`)
+    .replace(/\x00cichl_ref_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box ref"><div class="cichl-box-title">📋 ${safe(enc)}</div>`)
+    .replace(/\x00cichl_check_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box check"><div class="cichl-box-title">💡 ${safe(enc)}</div>`)
+    .replace(/\x00cichl_docs_([^\x00]+)\x00/g, (_, enc) => `<div class="cichl-box docs"><div class="cichl-box-title">📄 ${safe(enc)}</div>`);
 
   return html;
 }
