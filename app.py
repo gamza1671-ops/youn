@@ -1183,12 +1183,23 @@ def suga_chat():
     drug_context = ""
     criteria_context = ""
     if user_msg:
-        # 수가코드 패턴 우선 추출 (예: "C3360 수가금액" → "C3360")
+        # 수가코드 패턴 추출 (여러 코드 동시 지원: "M1677 M1676" → ['M1677','M1676'])
         import re as _re_code
-        _code_m = _re_code.search(r'\b([A-Za-z][A-Za-z0-9]{3,})\b', user_msg)
-        _search_kw = _code_m.group(1) if _code_m else user_msg
-        results = search_suga(_search_kw, limit=20)
-        if not results and _code_m:  # 코드로 못 찾으면 전체 문장 재시도
+        _code_list = _re_code.findall(r'\b([A-Za-z][A-Za-z0-9]{3,})\b', user_msg)
+        _search_kw = _code_list[0] if _code_list else user_msg
+        if len(_code_list) > 1:
+            # 각 코드 개별 검색 후 합치기 (중복 제거)
+            seen_codes = set()
+            results = []
+            for _c in _code_list:
+                for r in search_suga(_c, limit=10):
+                    _key = r.get("수가코드","") + r.get("구분","")
+                    if _key not in seen_codes:
+                        seen_codes.add(_key)
+                        results.append(r)
+        else:
+            results = search_suga(_search_kw, limit=20)
+        if not results and _code_list:  # 코드로 못 찾으면 전체 문장 재시도
             results = search_suga(user_msg, limit=20)
         import re as _re2
         _price_kws = ["금액", "단가", "얼마", "가격", "수가", "비용", "원", "코드", "명칭", "검색"]
