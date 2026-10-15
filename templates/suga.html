@@ -317,6 +317,9 @@ function renderMd(text) {
     // LLM 마크다운 형식: **[급여 인정]**
     .replace(/^\*\*\[([^\]]*급여[^\]]*)\]\*\*\s*$/gm, (_, m) => placeholder('verdict', m))
     .replace(/^\*\*\[(비급여[^\]]*)\]\*\*\s*$/gm, (_, m) => placeholder('verdict', m))
+    // LLM 비bold 형식: [실제 급여 유형] — [급여 인정] 또는 단독 [급여 인정]
+    .replace(/^\[실제 급여 유형\]\s*[—–-]+\s*\[([^\]]+)\]\s*$/gm, (_, m) => placeholder('verdict', m))
+    .replace(/^\[([^\]]*(?:선별급여|비급여|조건부 급여|급여 인정)[^\]]*)\]\s*$/gm, (_, m) => placeholder('verdict', m))
     // LLM 섹션 헤더: **Ⅰ. ...**
     .replace(/^\*\*([ⅠⅡⅢ]\.[^*]+)\*\*\s*$/gm, (_, m) => placeholder('section', m))
     .replace(/^\*\*(참조 고시[^*]*)\*\*\s*$/gm, (_, m) => placeholder('ref', m))
